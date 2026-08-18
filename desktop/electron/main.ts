@@ -1,4 +1,6 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol } from "electron";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -7,6 +9,91 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const clientRoot = path.resolve(root, "../dist/client");
 
 protocol.registerSchemesAsPrivileged([{ scheme: "screen-share", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
+
+let activeAudioProcess: ChildProcessWithoutNullStreams | null = null;
+
+function getAudioLoopbackPath(): string {
+	const possiblePaths = [
+		path.join(process.resourcesPath, "tools/audio-loopback/AudioLoopback.exe"),
+		path.resolve(root, "../tools/audio-loopback/AudioLoopback.exe"),
+		path.resolve(root, "../../tools/audio-loopback/AudioLoopback.exe"),
+		path.resolve(process.cwd(), "tools/audio-loopback/AudioLoopback.exe"),
+	];
+	for (const p of possiblePaths) {
+		if (fs.existsSync(p)) return p;
+	}
+	return possiblePaths[1];
+}
+
+function stopAudioProcess() {
+	if (activeAudioProcess) {
+		try {
+			activeAudioProcess.kill();
+		} catch {
+			// ignora erro ao encerrar processo
+		}
+		activeAudioProcess = null;
+	}
+}
+
+function startAudioLoopback(window: BrowserWindow, sourceId: string): boolean {
+	stopAudioProcess();
+	const isWindow = sourceId.startsWith("window:");
+	const isScreen = sourceId.startsWith("screen:");
+	console.log("[AudioLoopback] startAudioLoopback chamado:", { sourceId, isWindow, isScreen });
+	if (!isWindow && !isScreen) return false;
+
+	const exePath = getAudioLoopbackPath();
+	console.log("[AudioLoopback] exePath:", exePath, "exists:", fs.existsSync(exePath));
+	if (!fs.existsSync(exePath)) {
+		console.error("AudioLoopback.exe não encontrado em:", exePath);
+		return false;
+	}
+
+	const args: string[] = [];
+	if (isWindow) {
+		const parts = sourceId.split(":");
+		const hwnd = parts[1];
+		console.log("[AudioLoopback] sourceId partes:", parts, "hwnd extraído:", hwnd);
+		if (!hwnd) return false;
+		args.push("--hwnd", hwnd);
+	} else {
+		args.push("--exclude-discord");
+	}
+
+	console.log("[AudioLoopback] Iniciando processo com args:", args);
+	try {
+		const proc = spawn(exePath, args);
+		activeAudioProcess = proc;
+
+		proc.stdout.on("data", (chunk: Buffer) => {
+			if (!window.isDestroyed()) {
+				window.webContents.send("capture:audio-chunk", chunk);
+			}
+		});
+
+		proc.stderr.on("data", (data) => {
+			console.error("[AudioLoopback stderr]", data.toString());
+		});
+
+		proc.on("exit", (code) => {
+			console.log("[AudioLoopback] Processo encerrado com código:", code);
+			if (activeAudioProcess === proc) {
+				activeAudioProcess = null;
+			}
+		});
+
+		proc.on("error", (err) => {
+			console.error("[AudioLoopback] Erro ao iniciar processo:", err);
+		});
+
+		console.log("[AudioLoopback] Processo iniciado, PID:", proc.pid);
+		return true;
+	} catch (error) {
+		console.error("Erro ao iniciar AudioLoopback:", error);
+		return false;
+	}
+}
 
 async function sources() {
 	try {
@@ -52,14 +139,27 @@ app.whenReady().then(() => {
 		}
 		return net.fetch(pathToFileURL(filePath).toString());
 	});
+
 	ipcMain.handle("capture:sources", sources);
 	ipcMain.handle("system:hostname", () => os.hostname());
+	ipcMain.handle("capture:start-audio-loopback", (_event, sourceId: string) => {
+		const win = BrowserWindow.fromWebContents(_event.sender);
+		if (!win) return false;
+		return startAudioLoopback(win, sourceId);
+	});
+	ipcMain.handle("capture:stop-audio-loopback", () => {
+		stopAudioProcess();
+		return true;
+	});
+
 	createWindow();
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow();
 	});
 	return undefined;
 });
+
 app.on("window-all-closed", () => {
+	stopAudioProcess();
 	if (process.platform !== "darwin") app.quit();
 });

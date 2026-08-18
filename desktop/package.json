@@ -70,6 +70,7 @@
 		"files": [
 			"dist/**",
 			"dist-electron/**",
+			"tools/**",
 			"package.json"
 		]
 	}

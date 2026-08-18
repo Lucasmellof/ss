@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { RoomClient } from "@/lib/room";
 import { roomDebug, roomDebugError } from "@/lib/room/debug";
-import { resolutions, type AudioMode, type FrameRate, type Resolution, type SourceType, videoBitrate } from "./types";
+import { type AudioMode, type FrameRate, type Resolution, resolutions, type SourceType, videoBitrate } from "./types";
 
 type RoomClientRef = { current: RoomClient | undefined };
 
@@ -39,6 +39,8 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	const frameRateRef = useRef(frameRate);
 	const resolutionRef = useRef(resolution);
 	const audioModeRef = useRef(audioMode);
+	const audioContextRef = useRef<AudioContext | null>(null);
+	const audioCleanupRef = useRef<(() => void) | null>(null);
 
 	useEffect(() => {
 		serverRef.current = server;
@@ -50,6 +52,20 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		resolutionRef.current = resolution;
 		audioModeRef.current = audioMode;
 	}, [server, room, onStatus, sources, selectedSourceID, frameRate, resolution, audioMode]);
+
+	const cleanupAudio = () => {
+		if (audioCleanupRef.current) {
+			audioCleanupRef.current();
+			audioCleanupRef.current = null;
+		}
+		if (audioContextRef.current) {
+			void audioContextRef.current.close().catch(() => undefined);
+			audioContextRef.current = null;
+		}
+		if (window.screenShare?.stopAudioLoopback) {
+			void window.screenShare.stopAudioLoopback().catch(() => undefined);
+		}
+	};
 
 	const loadSources = async () => {
 		setPickerOpen(true);
@@ -85,6 +101,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		roomDebug("capture stop", { message, hadStream: Boolean(localStream.current) });
 		captureToken.current += 1;
 		client.current?.stopPublish();
+		cleanupAudio();
 		const stream = localStream.current;
 		localStream.current = null;
 		stopTracks(stream);
@@ -117,12 +134,9 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 			audioMode: audioModeValue,
 		});
 		setStartingShare(true);
+		cleanupAudio();
 		let stream: MediaStream | undefined;
 		try {
-			const audioSource = sourcesRef.current.find((item) => item.kind === "screen");
-			if (audioModeValue === "system" && !audioSource) {
-				throw new Error("Não foi possível encontrar a tela para capturar o áudio do PC");
-			}
 			const selectedResolution = resolutions[resolutionValue];
 			const desktopVideo = {
 				mandatory: {
@@ -137,17 +151,71 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 						: {}),
 				},
 			} as unknown as MediaTrackConstraints;
-			const desktopAudio = {
-				mandatory: {
-					chromeMediaSource: "desktop",
-					chromeMediaSourceId: audioSource?.id ?? source.id,
-				},
-			} as unknown as MediaTrackConstraints;
-			const capturesSystemAudio = audioModeValue === "system";
-			stream = await navigator.mediaDevices.getUserMedia({
-				audio: capturesSystemAudio ? desktopAudio : false,
-				video: desktopVideo,
-			});
+
+			const capturesAudio = audioModeValue === "system";
+
+			if (capturesAudio && window.screenShare?.startAudioLoopback) {
+				const videoStream = await navigator.mediaDevices.getUserMedia({
+					audio: false,
+					video: desktopVideo,
+				});
+
+				const audioCtx = new AudioContext({ sampleRate: 48000 });
+				audioContextRef.current = audioCtx;
+				if (audioCtx.state === "suspended") {
+					await audioCtx.resume();
+				}
+
+				const destination = audioCtx.createMediaStreamDestination();
+				let nextPlayTime = 0;
+
+				const unsubscribe = window.screenShare.onAudioChunk((chunk) => {
+					if (audioContextRef.current !== audioCtx || audioCtx.state === "closed") return;
+					const floatCount = Math.floor(chunk.byteLength / 4);
+					if (floatCount <= 0) return;
+
+					const floatArray = new Float32Array(chunk.buffer, chunk.byteOffset, floatCount);
+					const numFrames = Math.floor(floatArray.length / 2);
+					if (numFrames <= 0) return;
+
+					const audioBuffer = audioCtx.createBuffer(2, numFrames, 48000);
+					const leftChannel = audioBuffer.getChannelData(0);
+					const rightChannel = audioBuffer.getChannelData(1);
+
+					for (let i = 0; i < numFrames; i++) {
+						leftChannel[i] = floatArray[i * 2];
+						rightChannel[i] = floatArray[i * 2 + 1];
+					}
+
+					const bufferSource = audioCtx.createBufferSource();
+					bufferSource.buffer = audioBuffer;
+					bufferSource.connect(destination);
+
+					const currentTime = audioCtx.currentTime;
+					if (nextPlayTime < currentTime) {
+						nextPlayTime = currentTime + 0.02;
+					}
+					bufferSource.start(nextPlayTime);
+					nextPlayTime += audioBuffer.duration;
+				});
+
+				audioCleanupRef.current = unsubscribe;
+				await window.screenShare.startAudioLoopback(source.id);
+
+				const videoTrack = videoStream.getVideoTracks()[0];
+				const audioTrack = destination.stream.getAudioTracks()[0];
+				if (audioTrack) {
+					audioTrack.contentHint = "music";
+				}
+
+				stream = new MediaStream([videoTrack, ...(audioTrack ? [audioTrack] : [])]);
+			} else {
+				stream = await navigator.mediaDevices.getUserMedia({
+					audio: false,
+					video: desktopVideo,
+				});
+			}
+
 			roomDebug("capture stream created", {
 				streamID: stream.id,
 				maxBitrate,
@@ -160,6 +228,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 				})),
 			});
 			if (captureToken.current !== token || client.current !== roomClient) {
+				cleanupAudio();
 				stopTracks(stream);
 				return;
 			}
@@ -206,6 +275,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 			if (localStream.current !== stream || captureToken.current !== token || client.current !== roomClient) {
 				return;
 			}
+			cleanupAudio();
 			roomClient.stopPublish();
 			stopTracks(stream);
 			stopTracks(localStream.current);
@@ -220,6 +290,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		() => () => {
 			captureToken.current += 1;
 			sourceRequest.current += 1;
+			cleanupAudio();
 			client.current?.stopPublish();
 			const stream = localStream.current;
 			localStream.current = null;
