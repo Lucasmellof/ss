@@ -119,9 +119,14 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		setStartingShare(true);
 		let stream: MediaStream | undefined;
 		try {
-			const audioSource = sourcesRef.current.find((item) => item.kind === "screen");
+			const isWindow = source.kind === "window";
+			const audioSource = isWindow ? source : (sourcesRef.current.find((item) => item.kind === "screen") ?? source);
 			if (audioModeValue === "system" && !audioSource) {
-				throw new Error("Não foi possível encontrar a tela para capturar o áudio do PC");
+				throw new Error(
+					isWindow
+						? "Não foi possível encontrar a janela para capturar o áudio do aplicativo"
+						: "Não foi possível encontrar a tela para capturar o áudio do PC"
+				);
 			}
 			const selectedResolution = resolutions[resolutionValue];
 			const desktopVideo = {
@@ -140,7 +145,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 			const desktopAudio = {
 				mandatory: {
 					chromeMediaSource: "desktop",
-					chromeMediaSourceId: audioSource?.id ?? source.id,
+					chromeMediaSourceId: audioSource.id,
 				},
 			} as unknown as MediaTrackConstraints;
 			const capturesSystemAudio = audioModeValue === "system";

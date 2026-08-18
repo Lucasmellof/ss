@@ -275,13 +275,13 @@ export function RoomView({
 				<div className="flex items-center justify-center gap-1.5">
 					{sharing ? (
 						<button
-							className="inline-flex h-[38px] min-w-[38px] items-center justify-center gap-1.5 rounded-[9px] border border-app-accent/35 bg-app-accent/10 px-2.5 text-[11px] font-extrabold text-app-accent"
+							className="inline-flex h-[38px] min-w-[38px] items-center justify-center gap-1.5 rounded-[9px] border border-app-accent/35 bg-[#ED2939] px-2.5 text-[11px] font-extrabold text-app-text"
 							type="button"
 							onClick={() => onStopShare()}
 							aria-label="Parar compartilhamento"
 						>
 							{startingShare ? <RefreshCw className="size-[17px] animate-spin" /> : <MonitorUp className="size-[17px]" />}
-							<span className="max-sm:hidden">{startingShare ? "Conectando" : "Compartilhando"}</span>
+							<span className="max-sm:hidden">{startingShare ? "Conectando" : "Parar Compartilhamento"}</span>
 						</button>
 					) : (
 						<button
