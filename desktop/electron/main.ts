@@ -39,13 +39,14 @@ function createWindow() {
 	});
 	const devURL = process.env.VITE_DEV_SERVER_URL;
 	if (devURL) void window.loadURL(devURL);
-	else void window.loadURL("screen-share://app/_shell.html");
+	else void window.loadURL("screen-share://app/");
 }
 
 app.whenReady().then(() => {
 	protocol.handle("screen-share", (request) => {
 		const requestedPath = decodeURIComponent(new URL(request.url).pathname);
-		const filePath = path.resolve(clientRoot, `.${requestedPath}`);
+		const assetPath = requestedPath === "/" ? "/_shell.html" : requestedPath;
+		const filePath = path.resolve(clientRoot, `.${assetPath}`);
 		if (filePath !== clientRoot && !filePath.startsWith(`${clientRoot}${path.sep}`)) {
 			return new Response("Not found", { status: 404 });
 		}
