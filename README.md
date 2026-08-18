@@ -1,6 +1,6 @@
 # Screen Share
 
-Servidor leve, self-hosted e escrito em Go para compartilhar tela e áudio do sistema pelo navegador. A VPS faz a sinalização e retransmite os pacotes WebRTC sem gravar ou recodificar o vídeo.
+Um serviço simples feito com o GPT 5.6 Luna MAX. A ideia foi fazer algo simples que vai morrer assim que o Discord reativar o compartilhamento de telas deles.
 
 ## Como usar localmente
 
