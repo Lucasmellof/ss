@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Compartilhamento</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="brand">
+        <div class="brand-mark" aria-hidden="true">◈</div>
+        <div>
+          <p class="eyebrow">self-hosted · webrtc</p>
+          <h1>Compartilhamento</h1>
+        </div>
+      </header>
+
+      <section class="card setup-card" id="setup-card">
+        <div class="mode-switch" role="tablist" aria-label="Modo">
+          <button class="mode-button active" data-mode="broadcast" type="button">Transmitir</button>
+          <button class="mode-button" data-mode="watch" type="button">Assistir</button>
+        </div>
+
+        <div class="intro">
+          <p class="kicker" id="mode-kicker">Sua tela, sua sala</p>
+          <h2 id="mode-title">Transmitir tela e áudio</h2>
+          <p id="mode-description">
+            Escolha uma sala, clique em iniciar e selecione a tela inteira. No Chrome ou Edge,
+            marque também <em>Compartilhar áudio do sistema</em>.
+          </p>
+        </div>
+
+        <form id="setup-form">
+          <label for="room-input">Sala</label>
+          <input id="room-input" name="room" autocomplete="off" minlength="8" maxlength="64" spellcheck="false" />
+
+          <label class="broadcast-option" for="framerate-select">Taxa de quadros <span>para a transmissão</span></label>
+          <select class="broadcast-option" id="framerate-select">
+            <option value="30">30 FPS · estável</option>
+            <option value="60">60 FPS · suave</option>
+          </select>
+
+          <div class="form-actions">
+            <button class="primary-button" id="start-button" type="submit">Iniciar transmissão</button>
+            <button class="secondary-button hidden" id="copy-button" type="button">Copiar link da sala</button>
+          </div>
+        </form>
+
+        <p class="notice" id="setup-notice">A transmissão só começa depois que você autorizar o navegador.</p>
+      </section>
+
+      <section class="card stage-card hidden" id="stage-card">
+        <div class="stage-header">
+          <div>
+            <p class="kicker" id="stage-kicker">Ao vivo</p>
+            <h2 id="stage-title">Sala</h2>
+          </div>
+          <span class="status-pill" id="status-pill"><span class="status-dot"></span><span id="status-text">Conectando</span></span>
+        </div>
+
+        <div class="video-frame">
+          <video id="remote-video" class="video hidden" autoplay playsinline></video>
+          <video id="local-video" class="video hidden" autoplay muted playsinline></video>
+          <div class="video-placeholder" id="video-placeholder">
+            <span class="placeholder-icon">◌</span>
+            <p>Aguardando a transmissão…</p>
+          </div>
+        </div>
+
+        <div class="stage-actions">
+          <button class="secondary-button hidden" id="unmute-button" type="button">Ativar som</button>
+          <button class="secondary-button" id="theater-button" type="button">Modo cinema</button>
+          <button class="secondary-button" id="fullscreen-button" type="button">Tela cheia</button>
+          <button class="danger-button" id="stop-button" type="button">Encerrar</button>
+        </div>
+      </section>
+
+      <footer>
+        <span>WebRTC direto, sem gravação no servidor</span>
+        <span class="footer-separator">·</span>
+        <a href="/healthz" target="_blank" rel="noreferrer">status</a>
+      </footer>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

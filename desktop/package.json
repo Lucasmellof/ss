@@ -1,0 +1,74 @@
+{
+	"name": "screen-share-desktop",
+	"version": "0.2.0",
+	"private": true,
+	"type": "module",
+	"main": "dist-electron/main.js",
+	"scripts": {
+		"dev": "bun run build:electron && concurrently -k \"vite --host 127.0.0.1 --port 5173 --strictPort\" \"wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .\"",
+		"build:ui": "vite build",
+		"build:electron": "tsc -p tsconfig.electron.json",
+		"build": "bun run build:ui && bun run build:electron",
+		"lint": "oxlint src electron vite.config.ts electrobun.config.ts",
+		"lint:fix": "oxlint --fix src electron vite.config.ts electrobun.config.ts",
+		"format": "oxfmt --write \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" vite.config.ts electrobun.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
+		"format:check": "oxfmt --check \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" vite.config.ts electrobun.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
+		"dist": "bun run build && electron-builder --win portable"
+	},
+	"dependencies": {
+		"@radix-ui/react-dialog": "latest",
+		"@radix-ui/react-select": "latest",
+		"@tanstack/react-router": "latest",
+		"@tanstack/react-start": "latest",
+		"class-variance-authority": "latest",
+		"clsx": "latest",
+		"lucide-react": "latest",
+		"radix-ui": "^1.6.7",
+		"react": "latest",
+		"react-dom": "latest",
+		"tailwind-merge": "latest"
+	},
+	"devDependencies": {
+		"@tailwindcss/vite": "latest",
+		"@types/node": "latest",
+		"@types/react": "latest",
+		"@types/react-dom": "latest",
+		"@vitejs/plugin-react": "latest",
+		"concurrently": "latest",
+		"cross-env": "latest",
+		"electron": "latest",
+		"electron-builder": "latest",
+		"oxfmt": "^0.63.0",
+		"oxlint": "^1.78.0",
+		"typescript": "latest",
+		"vite": "latest",
+		"wait-on": "latest"
+	},
+	"build": {
+		"appId": "dev.lucas.screen-share",
+		"productName": "Screen Share",
+		"electronDist": "node_modules/electron/dist",
+		"asar": true,
+		"directories": {
+			"output": "artifacts/electron-builder-release"
+		},
+		"win": {
+			"target": [
+				{
+					"target": "portable",
+					"arch": [
+						"x64"
+					]
+				}
+			]
+		},
+		"portable": {
+			"artifactName": "ScreenShare-${version}-portable.exe"
+		},
+		"files": [
+			"dist/**",
+			"dist-electron/**",
+			"package.json"
+		]
+	}
+}

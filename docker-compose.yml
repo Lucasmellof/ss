@@ -1,0 +1,13 @@
+services:
+  screen-share:
+    build: .
+    restart: unless-stopped
+    environment:
+      PUBLIC_IP: "${PUBLIC_IP:?defina PUBLIC_IP no arquivo .env}"
+      WS_RATE_LIMIT: "${WS_RATE_LIMIT:-30}"
+      MAX_WS_PER_IP: "${MAX_WS_PER_IP:-16}"
+      UDP_MIN: "40000"
+      UDP_MAX: "40100"
+    ports:
+      - "8080:8080/tcp"
+      - "40000-40100:40000-40100/udp"

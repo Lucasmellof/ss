@@ -1,0 +1,15 @@
+{
+	"$schema": "./node_modules/oxfmt/configuration_schema.json",
+	"printWidth": 140,
+	"useTabs": true,
+	"singleQuote": false,
+	"tabWidth": 4,
+	"ignorePatterns": [
+		"node_modules/**",
+		"src/routeTree.gen.ts",
+		"dist/**",
+		"dist-electron/**",
+		"build/**",
+		"artifacts/**"
+	]
+}

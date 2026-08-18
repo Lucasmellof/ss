@@ -1,0 +1,25 @@
+# Go build and local runtime files
+/screen-share
+/bin/
+/tmp/
+*.test
+*.out
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# Desktop dependencies and generated output
+/desktop/node_modules/
+/desktop/dist/
+/desktop/dist-electron/
+/desktop/artifacts/
+/desktop/build/
+
+# Logs, installers and operating-system files
+*.log
+*.exe
+*.blockmap
+.DS_Store
+Thumbs.db

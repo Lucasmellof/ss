@@ -1,0 +1,34 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": [
+		"typescript",
+		"unicorn",
+		"oxc",
+		"react",
+		"import",
+		"react-perf",
+		"promise",
+		"node"
+	],
+	"categories": {
+		"correctness": "error",
+		"suspicious": "warn",
+		"perf": "warn"
+	},
+	"rules": {
+		"react/react-compiler": "warn",
+		"react/react-in-jsx-scope": "off",
+		"react-perf/jsx-no-new-function-as-prop": "off",
+		"react-perf/jsx-no-new-array-as-prop": "off",
+		"react-perf/jsx-no-new-object-as-prop": "off",
+		"unicorn/prefer-add-event-listener": "off"
+	},
+	"ignorePatterns": [
+		"node_modules/**",
+		"src/routeTree.gen.ts",
+		"dist/**",
+		"dist-electron/**",
+		"build/**",
+		"artifacts/**"
+	]
+}
