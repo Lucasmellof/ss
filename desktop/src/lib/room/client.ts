@@ -164,6 +164,15 @@ export class RoomClient {
 		stream.getTracks().forEach((track) => {
 			roomDebug("publisher local track", { id: track.id, kind: track.kind, readyState: track.readyState, enabled: track.enabled });
 			const sender = pc.addTrack(track, stream);
+			if (track.kind === "audio") {
+				track.contentHint = "music";
+				const parameters = sender.getParameters();
+				if (parameters.encodings?.length) {
+					parameters.encodings[0].maxBitrate = 256_000;
+					void sender.setParameters(parameters).catch(() => undefined);
+				}
+				return;
+			}
 			if (track.kind !== "video") return;
 			const parameters = sender.getParameters();
 			if (!parameters.encodings?.length) return;
