@@ -15,6 +15,7 @@ let activeAudioProcess: ChildProcessWithoutNullStreams | null = null;
 function getAudioLoopbackPath(): string {
 	const possiblePaths = [
 		path.join(process.resourcesPath, "tools/audio-loopback/AudioLoopback.exe"),
+		path.resolve(root, "../build/audio-loopback/AudioLoopback.exe"),
 		path.resolve(root, "../tools/audio-loopback/AudioLoopback.exe"),
 		path.resolve(root, "../../tools/audio-loopback/AudioLoopback.exe"),
 		path.resolve(process.cwd(), "tools/audio-loopback/AudioLoopback.exe"),
@@ -36,7 +37,7 @@ function stopAudioProcess() {
 	}
 }
 
-function startAudioLoopback(window: BrowserWindow, sourceId: string): boolean {
+async function startAudioLoopback(window: BrowserWindow, sourceId: string): Promise<boolean> {
 	stopAudioProcess();
 	const isWindow = sourceId.startsWith("window:");
 	const isScreen = sourceId.startsWith("screen:");
@@ -65,10 +66,29 @@ function startAudioLoopback(window: BrowserWindow, sourceId: string): boolean {
 	try {
 		const proc = spawn(exePath, args);
 		activeAudioProcess = proc;
+		let startupResolved = false;
+		let resolveStartup!: (started: boolean) => void;
+		const startup = new Promise<boolean>((resolve) => {
+			resolveStartup = resolve;
+		});
+		const startupTimeout = setTimeout(() => {
+			if (startupResolved) return;
+			console.error("[AudioLoopback] O helper não enviou áudio durante a inicialização");
+			stopAudioProcess();
+			startupResolved = true;
+			resolveStartup(false);
+		}, 2_000);
+		const markStarted = () => {
+			if (startupResolved) return;
+			startupResolved = true;
+			clearTimeout(startupTimeout);
+			resolveStartup(true);
+		};
 
 		proc.stdout.on("data", (chunk: Buffer) => {
+			markStarted();
 			if (!window.isDestroyed()) {
-				window.webContents.send("capture:audio-chunk", chunk);
+				window.webContents.send("capture:audio-chunk", new Uint8Array(chunk));
 			}
 		});
 
@@ -78,6 +98,11 @@ function startAudioLoopback(window: BrowserWindow, sourceId: string): boolean {
 
 		proc.on("exit", (code) => {
 			console.log("[AudioLoopback] Processo encerrado com código:", code);
+			if (!startupResolved) {
+				startupResolved = true;
+				clearTimeout(startupTimeout);
+				resolveStartup(false);
+			}
 			if (activeAudioProcess === proc) {
 				activeAudioProcess = null;
 			}
@@ -85,10 +110,15 @@ function startAudioLoopback(window: BrowserWindow, sourceId: string): boolean {
 
 		proc.on("error", (err) => {
 			console.error("[AudioLoopback] Erro ao iniciar processo:", err);
+			if (!startupResolved) {
+				startupResolved = true;
+				clearTimeout(startupTimeout);
+				resolveStartup(false);
+			}
 		});
 
 		console.log("[AudioLoopback] Processo iniciado, PID:", proc.pid);
-		return true;
+		return await startup;
 	} catch (error) {
 		console.error("Erro ao iniciar AudioLoopback:", error);
 		return false;

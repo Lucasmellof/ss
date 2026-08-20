@@ -16,6 +16,60 @@ const stopTracks = (stream: MediaStream | undefined | null) => {
 	stream?.getTracks().forEach((track) => track.stop());
 };
 
+type AudioStreamFormat = {
+	kind: "float32" | "pcm";
+	channels: number;
+	sampleRate: number;
+	blockAlign: number;
+	bitsPerSample: number;
+	validBitsPerSample: number;
+};
+
+const AUDIO_HEADER_SIZE = 16;
+
+const appendBytes = (current: Uint8Array, next: Uint8Array) => {
+	const merged = new Uint8Array(current.byteLength + next.byteLength);
+	merged.set(current);
+	merged.set(next, current.byteLength);
+	return merged;
+};
+
+const parseAudioHeader = (bytes: Uint8Array): AudioStreamFormat => {
+	if (bytes.byteLength < AUDIO_HEADER_SIZE || String.fromCharCode(...bytes.slice(0, 4)) !== "SSAF") {
+		throw new Error("O helper de áudio enviou um cabeçalho inválido");
+	}
+	if (bytes[4] !== 1) throw new Error(`Versão de áudio não suportada: ${bytes[4]}`);
+	if (bytes[5] !== 1 && bytes[5] !== 2) throw new Error(`Formato de áudio não suportado: ${bytes[5]}`);
+
+	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	const format = {
+		kind: bytes[5] === 1 ? ("float32" as const) : ("pcm" as const),
+		channels: bytes[6],
+		sampleRate: view.getUint32(8, true),
+		blockAlign: view.getUint16(12, true),
+		bitsPerSample: bytes[14],
+		validBitsPerSample: bytes[15] || bytes[14],
+	};
+	if (!format.channels || !format.sampleRate || !format.blockAlign || !format.bitsPerSample) {
+		throw new Error("O helper de áudio enviou um formato inválido");
+	}
+	return format;
+};
+
+const decodePcmSample = (view: DataView, offset: number, bitsPerSample: number) => {
+	if (bitsPerSample === 8) return (view.getUint8(offset) - 128) / 128;
+	if (bitsPerSample === 16) return view.getInt16(offset, true) / 32768;
+	if (bitsPerSample === 24) {
+		let value = view.getUint8(offset) | (view.getUint8(offset + 1) << 8) | (view.getUint8(offset + 2) << 16);
+		if (value & 0x800000) value |= ~0xffffff;
+		return value / 8388608;
+	}
+	if (bitsPerSample === 32) return view.getInt32(offset, true) / 2147483648;
+	return 0;
+};
+
+const clampSample = (value: number) => (Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0);
+
 export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptureOptions) {
 	const [local, setLocal] = useState<MediaStream | null>(null);
 	const [sharing, setSharing] = useState(false);
@@ -143,7 +197,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 				throw new Error(
 					isWindow
 						? "Não foi possível encontrar a janela para capturar o áudio do aplicativo"
-						: "Não foi possível encontrar a tela para capturar o áudio do PC"
+						: "Não foi possível encontrar a tela para capturar o áudio do PC",
 				);
 			}
 			const selectedResolution = resolutions[resolutionValue];
@@ -162,8 +216,14 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 			} as unknown as MediaTrackConstraints;
 
 			const capturesAudio = audioModeValue === "system";
+			const desktopAudio = {
+				mandatory: {
+					chromeMediaSource: "desktop",
+					chromeMediaSourceId: audioSource.id,
+				},
+			} as unknown as MediaTrackConstraints;
 
-			if (capturesAudio && window.screenShare?.startAudioLoopback) {
+			if (capturesAudio && window.screenShare?.startAudioLoopback && window.screenShare?.onAudioChunk) {
 				const videoStream = await navigator.mediaDevices.getUserMedia({
 					audio: false,
 					video: desktopVideo,
@@ -177,65 +237,98 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 
 				const destination = audioCtx.createMediaStreamDestination();
 				let nextPlayTime = 0;
+				let bufferedAudio = new Uint8Array();
+				let audioFormat: AudioStreamFormat | undefined;
+				let audioDecodeErrorReported = false;
 
 				const unsubscribe = window.screenShare.onAudioChunk((chunk) => {
 					if (audioContextRef.current !== audioCtx || audioCtx.state === "closed") return;
-					const floatCount = Math.floor(chunk.byteLength / 4);
-					if (floatCount <= 0) return;
+					try {
+						const incoming = new Uint8Array(chunk.byteLength);
+						incoming.set(chunk);
+						bufferedAudio = appendBytes(bufferedAudio, incoming);
 
-					const floatArray = new Float32Array(chunk.buffer, chunk.byteOffset, floatCount);
-					const numFrames = Math.floor(floatArray.length / 2);
-					if (numFrames <= 0) return;
+						if (!audioFormat) {
+							if (bufferedAudio.byteLength < AUDIO_HEADER_SIZE) return;
+							audioFormat = parseAudioHeader(bufferedAudio);
+							bufferedAudio = bufferedAudio.slice(AUDIO_HEADER_SIZE);
+							roomDebug("audio stream format", audioFormat);
+						}
 
-					const audioBuffer = audioCtx.createBuffer(2, numFrames, 48000);
-					const leftChannel = audioBuffer.getChannelData(0);
-					const rightChannel = audioBuffer.getChannelData(1);
+						const frameBytes = audioFormat.blockAlign;
+						const frameCount = Math.floor(bufferedAudio.byteLength / frameBytes);
+						if (frameCount <= 0) return;
+						const bytesToConsume = frameCount * frameBytes;
+						const raw = bufferedAudio.slice(0, bytesToConsume);
+						bufferedAudio = bufferedAudio.slice(bytesToConsume);
+						const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+						const sampleBytes = Math.max(1, Math.floor(audioFormat.blockAlign / audioFormat.channels));
+						const audioBuffer = audioCtx.createBuffer(2, frameCount, audioFormat.sampleRate);
+						const leftChannel = audioBuffer.getChannelData(0);
+						const rightChannel = audioBuffer.getChannelData(1);
 
-					for (let i = 0; i < numFrames; i++) {
-						leftChannel[i] = floatArray[i * 2];
-						rightChannel[i] = floatArray[i * 2 + 1];
+						const readSample = (frame: number, channel: number) => {
+							const sourceChannel = Math.min(channel, audioFormat.channels - 1);
+							const offset = frame * frameBytes + sourceChannel * sampleBytes;
+							if (audioFormat.kind === "float32") {
+								return offset + 4 <= view.byteLength ? clampSample(view.getFloat32(offset, true)) : 0;
+							}
+							return offset + sampleBytes <= view.byteLength
+								? clampSample(decodePcmSample(view, offset, audioFormat.bitsPerSample))
+								: 0;
+						};
+
+						for (let i = 0; i < frameCount; i++) {
+							leftChannel[i] = readSample(i, 0);
+							rightChannel[i] = readSample(i, 1);
+						}
+
+						const bufferSource = audioCtx.createBufferSource();
+						bufferSource.buffer = audioBuffer;
+						bufferSource.connect(destination);
+
+						const currentTime = audioCtx.currentTime;
+						if (nextPlayTime < currentTime) {
+							nextPlayTime = currentTime + 0.02;
+						}
+						bufferSource.start(nextPlayTime);
+						nextPlayTime += audioBuffer.duration;
+					} catch (error) {
+						if (!audioDecodeErrorReported) {
+							audioDecodeErrorReported = true;
+							roomDebugError("audio chunk decode failed", error);
+						}
 					}
-
-					const bufferSource = audioCtx.createBufferSource();
-					bufferSource.buffer = audioBuffer;
-					bufferSource.connect(destination);
-
-					const currentTime = audioCtx.currentTime;
-					if (nextPlayTime < currentTime) {
-						nextPlayTime = currentTime + 0.02;
-					}
-					bufferSource.start(nextPlayTime);
-					nextPlayTime += audioBuffer.duration;
 				});
 
 				audioCleanupRef.current = unsubscribe;
-				await window.screenShare.startAudioLoopback(source.id);
+				const loopbackStarted = await window.screenShare.startAudioLoopback(source.id);
+				if (!loopbackStarted) {
+					roomDebug("native audio loopback unavailable; using Electron desktop audio capture");
+					unsubscribe();
+					audioCleanupRef.current = null;
+					await audioCtx.close().catch(() => undefined);
+					if (audioContextRef.current === audioCtx) audioContextRef.current = null;
+					stopTracks(videoStream);
+					stream = await navigator.mediaDevices.getUserMedia({ audio: desktopAudio, video: desktopVideo });
+				} else {
+					const videoTrack = videoStream.getVideoTracks()[0];
+					const audioTrack = destination.stream.getAudioTracks()[0];
+					if (audioTrack) {
+						audioTrack.contentHint = "music";
+					}
 
-				const videoTrack = videoStream.getVideoTracks()[0];
-				const audioTrack = destination.stream.getAudioTracks()[0];
-				if (audioTrack) {
-					audioTrack.contentHint = "music";
+					stream = new MediaStream([videoTrack, ...(audioTrack ? [audioTrack] : [])]);
 				}
-
-				stream = new MediaStream([videoTrack, ...(audioTrack ? [audioTrack] : [])]);
 			} else {
 				stream = await navigator.mediaDevices.getUserMedia({
-					audio: false,
+					audio: capturesAudio ? desktopAudio : false,
 					video: desktopVideo,
 				});
 			}
-
-			const desktopAudio = {
-				mandatory: {
-					chromeMediaSource: "desktop",
-					chromeMediaSourceId: audioSource.id,
-				},
-			} as unknown as MediaTrackConstraints;
-			const capturesSystemAudio = audioModeValue === "system";
-			stream = await navigator.mediaDevices.getUserMedia({
-				audio: capturesSystemAudio ? desktopAudio : false,
-				video: desktopVideo,
-			});
+			if (capturesAudio && stream.getAudioTracks().length === 0) {
+				throw new Error("A fonte não forneceu uma faixa de áudio");
+			}
 			roomDebug("capture stream created", {
 				streamID: stream.id,
 				maxBitrate,
@@ -292,13 +385,14 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 			}
 		} catch (error) {
 			roomDebugError("capture start failed", error);
-			if (localStream.current !== stream || captureToken.current !== token || client.current !== roomClient) {
+			if (captureToken.current !== token || client.current !== roomClient) {
+				stopTracks(stream);
 				return;
 			}
 			cleanupAudio();
 			roomClient.stopPublish();
 			stopTracks(stream);
-			stopTracks(localStream.current);
+			if (localStream.current && localStream.current !== stream) stopTracks(localStream.current);
 			localStream.current = null;
 			onStatusRef.current(error instanceof Error ? error.message : "Não foi possível iniciar o compartilhamento");
 		} finally {

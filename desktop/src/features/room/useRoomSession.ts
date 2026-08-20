@@ -15,8 +15,8 @@ export type RoomSessionOptions = {
 export type RoomClientRef = { current: RoomClient | undefined };
 
 export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
-	const [room, setRoom] = useState(() => linkedRoom() || storedValue("screen-share.room"));
-	const [name, setName] = useState(() => storedValue("screen-share.name"));
+	const [room, setRoom] = useState("");
+	const [name, setName] = useState("");
 	const [joined, setJoined] = useState(false);
 	const [joining, setJoining] = useState(false);
 	const [status, setStatus] = useState("Escolha uma sala para começar");
@@ -29,6 +29,11 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 	const joinAttempt = useRef(0);
 	const joiningRef = useRef(false);
 	const onStopSharingRef = useRef<StopSharing | undefined>(onStopSharing);
+
+	useEffect(() => {
+		setRoom(linkedRoom() || storedValue("screen-share.room"));
+		setName(storedValue("screen-share.name"));
+	}, []);
 
 	useEffect(() => {
 		onStopSharingRef.current = onStopSharing;

@@ -3,10 +3,13 @@ module screen-share
 go 1.23
 
 require (
+	github.com/go-ole/go-ole v1.3.0
 	github.com/gorilla/websocket v1.5.3
+	github.com/moutend/go-wca v0.3.0
 	github.com/pion/rtcp v1.2.15
 	github.com/pion/rtp v1.8.22
 	github.com/pion/webrtc/v4 v4.1.5
+	golang.org/x/sys v0.30.0
 )
 
 require (
@@ -27,5 +30,4 @@ require (
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/net v0.35.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
 )

@@ -8,5 +8,10 @@ export default defineConfig({
 	plugins: [tanstackStart({ spa: { enabled: true } }), react(), tailwindcss()],
 	resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
 	base: "./",
-	build: { outDir: "dist" },
+	build: {
+		outDir: "dist",
+		minify: false,
+		cssMinify: false,
+		sourcemap: true,
+	},
 });

@@ -9,11 +9,12 @@
 		"build:ui": "vite build",
 		"build:electron": "tsc -p tsconfig.electron.json",
 		"build": "bun run build:ui && bun run build:electron",
+		"build:audio": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-audio-loopback.ps1",
 		"lint": "oxlint src electron vite.config.ts electrobun.config.ts",
 		"lint:fix": "oxlint --fix src electron vite.config.ts electrobun.config.ts",
 		"format": "oxfmt --write \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" vite.config.ts electrobun.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
 		"format:check": "oxfmt --check \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" vite.config.ts electrobun.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
-		"dist": "bun run build && electron-builder --win portable",
+		"dist": "bun run build:audio && bun run build && electron-builder --win portable",
 		"sign": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign-windows.ps1",
 		"dist:signed": "bun run dist && bun run sign"
 	},
@@ -72,6 +73,12 @@
 			"dist-electron/**",
 			"tools/**",
 			"package.json"
+		],
+		"extraResources": [
+			{
+				"from": "build/audio-loopback/AudioLoopback.exe",
+				"to": "tools/audio-loopback/AudioLoopback.exe"
+			}
 		]
 	}
 }
