@@ -2,9 +2,12 @@
 
 declare global {
 	type CaptureSource = { id: string; name: string; kind: "screen" | "window"; thumbnail: string; icon?: string };
+	type DesktopPlatform = "win32" | "linux" | "darwin" | "freebsd" | "unknown";
 	interface Window {
 		screenShare: {
+			platform: DesktopPlatform;
 			sources(): Promise<CaptureSource[]>;
+			setCaptureSource(sourceId: string): Promise<boolean>;
 			hostname(): Promise<string>;
 			startAudioLoopback(sourceId: string): Promise<boolean>;
 			stopAudioLoopback(): Promise<void>;

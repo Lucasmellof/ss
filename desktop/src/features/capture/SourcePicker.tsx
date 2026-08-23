@@ -14,6 +14,7 @@ export function SourcePicker({
 	frameRate,
 	resolution,
 	audioMode,
+	nativePicker,
 	loading,
 	starting,
 	onType,
@@ -70,6 +71,11 @@ export function SourcePicker({
 						<RefreshCw className={cn("size-[13px]", loading && "animate-spin")} /> Atualizar
 					</button>
 				</div>
+				{nativePicker && (
+					<p className="mb-2.5 rounded-lg border border-app-accent/20 bg-app-accent/8 px-3 py-2 text-[11px] leading-5 text-app-muted">
+						No Linux, o PipeWire pode abrir o seletor de tela do sistema ao iniciar a captura.
+					</p>
+				)}
 				<div className="mb-2.5 flex gap-1.5 rounded-[9px] bg-[#0b0e12] p-1" role="tablist" aria-label="Tipo de fonte">
 					<button
 						className={cn(
@@ -194,7 +200,7 @@ export function SourcePicker({
 							className={cn(buttonBase, "bg-app-accent text-[#07150f] hover:bg-[#b0efd5]")}
 							type="button"
 							onClick={onStart}
-							disabled={!selectedID || loading || starting}
+							disabled={(!selectedID && !nativePicker) || loading || starting}
 						>
 							{starting ? (
 								<>

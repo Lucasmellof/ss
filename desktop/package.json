@@ -2,6 +2,8 @@
 	"name": "screen-share-desktop",
 	"version": "0.2.0",
 	"private": true,
+	"description": "Cliente desktop para compartilhamento de tela e áudio.",
+	"author": "Screen Share",
 	"type": "module",
 	"main": "dist-electron/main.js",
 	"scripts": {
@@ -9,14 +11,17 @@
 		"build:ui": "vite build",
 		"build:electron": "tsc -p tsconfig.electron.json",
 		"build": "bun run build:ui && bun run build:electron",
-		"build:audio": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-audio-loopback.ps1",
+		"build:audio": "bun scripts/build-audio.mjs",
+		"build:audio:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-audio-loopback.ps1",
 		"lint": "oxlint src electron vite.config.ts electrobun.config.ts",
 		"lint:fix": "oxlint --fix src electron vite.config.ts electrobun.config.ts",
-		"format": "oxfmt --write \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" vite.config.ts electrobun.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
-		"format:check": "oxfmt --check \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" vite.config.ts electrobun.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
-		"dist": "bun run build:audio && bun run build && electron-builder --win portable",
+		"format": "oxfmt --write \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" \"scripts/*.mjs\" vite.config.ts electrobun.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
+		"format:check": "oxfmt --check \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" \"scripts/*.mjs\" vite.config.ts electrobun.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
+		"dist": "bun scripts/dist.mjs",
+		"dist:win": "bun run build:audio:win && bun run build && electron-builder --win portable",
+		"dist:linux": "bun run build && electron-builder --linux AppImage deb",
 		"sign": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign-windows.ps1",
-		"dist:signed": "bun run dist && bun run sign"
+		"dist:signed": "bun run dist:win && bun run sign"
 	},
 	"dependencies": {
 		"@radix-ui/react-dialog": "latest",
@@ -50,7 +55,6 @@
 	"build": {
 		"appId": "dev.lucas.screen-share",
 		"productName": "Screen Share",
-		"electronDist": "node_modules/electron/dist",
 		"asar": true,
 		"directories": {
 			"output": "artifacts/electron-builder-release"
@@ -63,7 +67,31 @@
 						"x64"
 					]
 				}
+			],
+			"extraResources": [
+				{
+					"from": "build/audio-loopback/AudioLoopback.exe",
+					"to": "tools/audio-loopback/AudioLoopback.exe"
+				}
 			]
+		},
+		"linux": {
+			"target": [
+				{
+					"target": "AppImage",
+					"arch": [
+						"x64"
+					]
+				},
+				{
+					"target": "deb",
+					"arch": [
+						"x64"
+					]
+				}
+			],
+			"category": "AudioVideo",
+			"artifactName": "ScreenShare-${version}-${arch}.${ext}"
 		},
 		"portable": {
 			"artifactName": "ScreenShare-${version}-portable.exe"
@@ -73,12 +101,7 @@
 			"dist-electron/**",
 			"tools/**",
 			"package.json"
-		],
-		"extraResources": [
-			{
-				"from": "build/audio-loopback/AudioLoopback.exe",
-				"to": "tools/audio-loopback/AudioLoopback.exe"
-			}
 		]
-	}
+	},
+	"desktopName": "screen-share"
 }

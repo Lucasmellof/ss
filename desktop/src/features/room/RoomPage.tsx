@@ -65,6 +65,7 @@ export function RoomPage() {
 					frameRate={capture.frameRate}
 					resolution={capture.resolution}
 					audioMode={capture.audioMode}
+					nativePicker={window.screenShare.platform === "linux"}
 					loading={capture.loadingSources}
 					starting={capture.startingShare}
 					onType={capture.selectSourceType}

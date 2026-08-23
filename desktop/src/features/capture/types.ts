@@ -27,6 +27,7 @@ export type SourcePickerProps = {
 	frameRate: FrameRate;
 	resolution: Resolution;
 	audioMode: AudioMode;
+	nativePicker: boolean;
 	loading: boolean;
 	starting: boolean;
 	onType: (type: SourceType) => void;
