@@ -14,6 +14,7 @@ export function SourcePicker({
 	frameRate,
 	resolution,
 	audioMode,
+	includeDiscordAudio,
 	nativePicker,
 	loading,
 	starting,
@@ -22,6 +23,7 @@ export function SourcePicker({
 	onFrameRate,
 	onResolution,
 	onAudioMode,
+	onIncludeDiscordAudio,
 	onRefresh,
 	onClose,
 	onStart,
@@ -188,6 +190,17 @@ export function SourcePicker({
 							</select>
 						</label>
 					</div>
+					{audioMode === "system" && sourceType === "screen" && (
+						<label className="mt-3 flex cursor-pointer items-center gap-2 text-xs font-bold text-app-muted">
+							<input
+								className="size-4 accent-app-accent"
+								type="checkbox"
+								checked={includeDiscordAudio}
+								onChange={(event) => onIncludeDiscordAudio(event.target.checked)}
+							/>
+							Incluir áudio do Discord
+						</label>
+					)}
 					<div className="mt-[17px] flex justify-end gap-2 max-sm:[&>button]:flex-1">
 						<button
 							className={cn(buttonBase, "border-app-line text-app-muted hover:bg-app-panel-raised")}

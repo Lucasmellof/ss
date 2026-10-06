@@ -27,6 +27,7 @@ export type SourcePickerProps = {
 	frameRate: FrameRate;
 	resolution: Resolution;
 	audioMode: AudioMode;
+	includeDiscordAudio: boolean;
 	nativePicker: boolean;
 	loading: boolean;
 	starting: boolean;
@@ -35,6 +36,7 @@ export type SourcePickerProps = {
 	onFrameRate: (value: FrameRate) => void;
 	onResolution: (value: Resolution) => void;
 	onAudioMode: (value: AudioMode) => void;
+	onIncludeDiscordAudio: (value: boolean) => void;
 	onRefresh: () => void;
 	onClose: () => void;
 	onStart: () => void;

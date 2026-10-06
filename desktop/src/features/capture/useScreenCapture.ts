@@ -80,6 +80,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	const [frameRate, setFrameRate] = useState<FrameRate>(30);
 	const [resolution, setResolution] = useState<Resolution>("1080p");
 	const [audioMode, setAudioMode] = useState<AudioMode>("none");
+	const [includeDiscordAudio, setIncludeDiscordAudio] = useState(false);
 	const [loadingSources, setLoadingSources] = useState(false);
 	const [startingShare, setStartingShare] = useState(false);
 	const localStream = useRef<MediaStream | null>(null);
@@ -93,6 +94,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	const frameRateRef = useRef(frameRate);
 	const resolutionRef = useRef(resolution);
 	const audioModeRef = useRef(audioMode);
+	const includeDiscordAudioRef = useRef(includeDiscordAudio);
 	const audioContextRef = useRef<AudioContext | null>(null);
 	const audioCleanupRef = useRef<(() => void) | null>(null);
 
@@ -105,7 +107,8 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		frameRateRef.current = frameRate;
 		resolutionRef.current = resolution;
 		audioModeRef.current = audioMode;
-	}, [server, room, onStatus, sources, selectedSourceID, frameRate, resolution, audioMode]);
+		includeDiscordAudioRef.current = includeDiscordAudio;
+	}, [server, room, onStatus, sources, selectedSourceID, frameRate, resolution, audioMode, includeDiscordAudio]);
 
 	const cleanupAudio = () => {
 		if (audioCleanupRef.current) {
@@ -178,6 +181,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		const frameRateValue = frameRateRef.current;
 		const resolutionValue = resolutionRef.current;
 		const audioModeValue = audioModeRef.current;
+		const includeDiscordAudioValue = includeDiscordAudioRef.current;
 		const maxBitrate = videoBitrate(resolutionValue, frameRateValue);
 		const token = ++captureToken.current;
 		roomDebug("capture start", {
@@ -187,6 +191,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 			frameRate: frameRateValue,
 			resolution: resolutionValue,
 			audioMode: audioModeValue,
+			includeDiscordAudio: includeDiscordAudioValue,
 		});
 		setStartingShare(true);
 		cleanupAudio();
@@ -272,6 +277,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 				!isLinux &&
 				source &&
 				capturesAudio &&
+				(!includeDiscordAudioValue || isWindow) &&
 				desktopVideo &&
 				desktopAudio &&
 				window.screenShare?.startAudioLoopback &&
@@ -474,6 +480,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		frameRate,
 		resolution,
 		audioMode,
+		includeDiscordAudio,
 		loadingSources,
 		startingShare,
 		setPickerOpen,
@@ -482,6 +489,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		setFrameRate,
 		setResolution,
 		setAudioMode,
+		setIncludeDiscordAudio,
 		loadSources,
 		selectSourceType,
 		selectSource,
