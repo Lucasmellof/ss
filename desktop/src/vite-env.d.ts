@@ -2,6 +2,14 @@
 
 declare global {
 	type CaptureSource = { id: string; name: string; kind: "screen" | "window"; thumbnail: string; icon?: string };
+	type UpdateInfo = {
+		currentVersion: string;
+		version: string;
+		notes: string;
+		releaseURL: string;
+		assetName: string;
+		assetSize: number;
+	};
 	type DesktopPlatform = "win32" | "linux" | "darwin" | "freebsd" | "unknown";
 	interface Window {
 		screenShare: {
@@ -11,6 +19,9 @@ declare global {
 			hostname(): Promise<string>;
 			startAudioLoopback(sourceId: string): Promise<boolean>;
 			stopAudioLoopback(): Promise<void>;
+			checkForUpdate(): Promise<UpdateInfo | null>;
+			downloadUpdate(): Promise<string>;
+			onUpdateProgress(callback: (progress: { received: number; total: number }) => void): () => void;
 			onAudioChunk(callback: (buffer: Uint8Array) => void): () => void;
 		};
 	}

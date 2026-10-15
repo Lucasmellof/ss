@@ -2,6 +2,7 @@
 import { HeadContent, Outlet, Scripts, createRootRoute } from "@tanstack/react-router";
 import "../styles.css";
 import { RoomSessionProvider } from "@/features/room/RoomSessionProvider";
+import { UpdateBanner } from "@/features/update/UpdateBanner";
 
 export const Route = createRootRoute({
 	component: () => (
@@ -13,6 +14,7 @@ export const Route = createRootRoute({
 				<RoomSessionProvider>
 					<Outlet />
 				</RoomSessionProvider>
+				<UpdateBanner />
 				<Scripts />
 			</body>
 		</html>

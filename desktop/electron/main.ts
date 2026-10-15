@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { registerUpdater } from "./updater.js";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const clientRoot = path.resolve(root, "../dist/client");
@@ -223,6 +224,7 @@ app.whenReady().then(() => {
 		selectedCaptureSourceID = sourceId;
 		return true;
 	});
+	registerUpdater();
 	ipcMain.handle("system:hostname", () => os.hostname());
 	ipcMain.handle("capture:start-audio-loopback", (_event, sourceId: string) => {
 		const win = BrowserWindow.fromWebContents(_event.sender);

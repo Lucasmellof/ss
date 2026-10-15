@@ -7,6 +7,15 @@ contextBridge.exposeInMainWorld("screenShare", {
 	hostname: () => ipcRenderer.invoke("system:hostname"),
 	startAudioLoopback: (sourceId: string) => ipcRenderer.invoke("capture:start-audio-loopback", sourceId),
 	stopAudioLoopback: () => ipcRenderer.invoke("capture:stop-audio-loopback"),
+	checkForUpdate: () => ipcRenderer.invoke("update:check"),
+	downloadUpdate: () => ipcRenderer.invoke("update:download"),
+	onUpdateProgress: (callback: (progress: { received: number; total: number }) => void) => {
+		const handler = (_event: Electron.IpcRendererEvent, progress: { received: number; total: number }) => callback(progress);
+		ipcRenderer.on("update:progress", handler);
+		return () => {
+			ipcRenderer.removeListener("update:progress", handler);
+		};
+	},
 	onAudioChunk: (callback: (buffer: Uint8Array) => void) => {
 		const handler = (_event: Electron.IpcRendererEvent, chunk: Uint8Array) => callback(chunk);
 		ipcRenderer.on("capture:audio-chunk", handler);
