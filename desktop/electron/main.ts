@@ -172,6 +172,7 @@ function createWindow() {
 		minWidth: 900,
 		minHeight: 650,
 		backgroundColor: "#09090b",
+		icon: path.resolve(root, "../resources/icon.png"),
 		webPreferences: { preload: path.join(root, "preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: false },
 	});
 	const devURL = process.env.VITE_DEV_SERVER_URL;

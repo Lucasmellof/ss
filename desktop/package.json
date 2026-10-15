@@ -69,6 +69,7 @@
 			"output": "artifacts/electron-builder-release"
 		},
 		"win": {
+			"icon": "resources/icon.ico",
 			"target": [
 				{
 					"target": "portable",
@@ -91,6 +92,7 @@
 			]
 		},
 		"linux": {
+			"icon": "resources/icon.png",
 			"target": [
 				{
 					"target": "AppImage",
@@ -124,6 +126,7 @@
 			"dist/**",
 			"dist-electron/**",
 			"tools/**",
+			"resources/icon.png",
 			"package.json"
 		]
 	},

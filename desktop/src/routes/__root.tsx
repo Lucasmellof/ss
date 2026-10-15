@@ -5,6 +5,12 @@ import { RoomSessionProvider } from "@/features/room/RoomSessionProvider";
 import { UpdateBanner } from "@/features/update/UpdateBanner";
 
 export const Route = createRootRoute({
+	head: () => ({
+		links: [
+			{ rel: "icon", href: "/favicon.ico", sizes: "any" },
+			{ rel: "icon", type: "image/png", href: "/icon.png" },
+		],
+	}),
 	component: () => (
 		<html lang="pt-BR" className="dark [color-scheme:dark]">
 			<head>
