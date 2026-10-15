@@ -189,6 +189,12 @@ app.whenReady().then(() => {
 		return net.fetch(pathToFileURL(filePath).toString());
 	});
 
+
+	const signalingOrigin = "https://ss.carmellium.com";
+	session.defaultSession.webRequest.onBeforeSendHeaders({ urls: [`wss://ss.carmellium.com/*`, `ws://ss.carmellium.com/*`] }, (details, callback) => {
+		callback({ requestHeaders: { ...details.requestHeaders, Origin: signalingOrigin } });
+	});
+
 	if (process.platform === "linux") {
 		// The Electron display-media API uses this callback as its async bridge to PipeWire.
 		// oxlint-disable promise/no-callback-in-promise
