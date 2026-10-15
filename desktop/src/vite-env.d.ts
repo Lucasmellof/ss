@@ -10,6 +10,10 @@ declare global {
 		assetName: string;
 		assetSize: number;
 	};
+	type UpdateCheckResult =
+		| { status: "up-to-date"; currentVersion: string }
+		| { status: "available"; info: UpdateInfo }
+		| { status: "error"; message: string };
 	type DesktopPlatform = "win32" | "linux" | "darwin" | "freebsd" | "unknown";
 	interface Window {
 		screenShare: {
@@ -19,7 +23,7 @@ declare global {
 			hostname(): Promise<string>;
 			startAudioLoopback(sourceId: string): Promise<boolean>;
 			stopAudioLoopback(): Promise<void>;
-			checkForUpdate(): Promise<UpdateInfo | null>;
+			checkForUpdate(): Promise<UpdateCheckResult>;
 			downloadUpdate(): Promise<string>;
 			onUpdateProgress(callback: (progress: { received: number; total: number }) => void): () => void;
 			onAudioChunk(callback: (buffer: Uint8Array) => void): () => void;

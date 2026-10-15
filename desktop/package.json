@@ -1,9 +1,10 @@
 {
 	"name": "screen-share-desktop",
-	"version": "0.2.1",
+	"version": "0.2.2",
 	"private": true,
 	"description": "Cliente desktop para compartilhamento de tela e áudio.",
 	"author": "Screen Share",
+	"homepage": "https://github.com/Lucasmellof/ss",
 	"type": "module",
 	"main": "dist-electron/main.js",
 	"scripts": {
@@ -91,6 +92,7 @@
 				}
 			],
 			"category": "AudioVideo",
+			"maintainer": "Screen Share <Lucasmellof@users.noreply.github.com>",
 			"artifactName": "ScreenShare-${version}-${arch}.${ext}"
 		},
 		"portable": {

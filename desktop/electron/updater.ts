@@ -19,6 +19,11 @@ export type UpdateInfo = {
 	assetSize: number;
 };
 
+export type UpdateCheckResult =
+	| { status: "up-to-date"; currentVersion: string }
+	| { status: "available"; info: UpdateInfo }
+	| { status: "error"; message: string };
+
 let pendingAsset: { info: UpdateInfo; url: string } | undefined;
 let downloading = false;
 
@@ -62,16 +67,16 @@ function isAllowedDownload(rawURL: string) {
 	}
 }
 
-async function checkForUpdate(): Promise<UpdateInfo | null> {
+async function checkForUpdate(): Promise<UpdateCheckResult> {
+	const currentVersion = app.getVersion();
 	const response = await net.fetch(RELEASES_API, { headers: { Accept: "application/vnd.github+json", "User-Agent": "screen-share-updater" } });
-	if (response.status === 404) return null;
+	if (response.status === 404) return { status: "up-to-date", currentVersion };
 	if (!response.ok) throw new Error(`GitHub respondeu ${response.status}`);
 	const release = (await response.json()) as GithubRelease;
 
-	const currentVersion = app.getVersion();
-	if (!isNewer(release.tag_name, currentVersion)) return null;
+	if (!isNewer(release.tag_name, currentVersion)) return { status: "up-to-date", currentVersion };
 	const asset = pickAsset(release.assets ?? []);
-	if (!asset || !isAllowedDownload(asset.browser_download_url)) return null;
+	if (!asset || !isAllowedDownload(asset.browser_download_url)) return { status: "up-to-date", currentVersion };
 
 	const info: UpdateInfo = {
 		currentVersion,
@@ -82,7 +87,7 @@ async function checkForUpdate(): Promise<UpdateInfo | null> {
 		assetSize: asset.size,
 	};
 	pendingAsset = { info, url: asset.browser_download_url };
-	return info;
+	return { status: "available", info };
 }
 
 async function downloadAndQuit(window: BrowserWindow | null) {
@@ -126,7 +131,7 @@ export function registerUpdater() {
 			return await checkForUpdate();
 		} catch (error) {
 			console.error("[Updater] Falha ao verificar atualização:", error);
-			return null;
+			return { status: "error", message: error instanceof Error ? error.message : "Falha ao verificar atualização" } satisfies UpdateCheckResult;
 		}
 	});
 	ipcMain.handle("update:download", (event) => downloadAndQuit(BrowserWindow.fromWebContents(event.sender)));
