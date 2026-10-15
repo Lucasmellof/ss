@@ -14,11 +14,16 @@ type PendingPing = {
 export class RoomClient {
 	private viewer?: ViewerSession;
 	private viewerID?: string;
+	private resumeToken?: string;
 	private publisher?: PublisherSession;
 	private publisherStop?: Promise<void>;
 	private publisherIDs = new Set<string>();
 	private pendingPing?: PendingPing;
 	private pingCounter = 0;
+
+	getResumeToken() {
+		return this.resumeToken;
+	}
 
 	constructor(
 		private onStreams: (streams: RoomStream[]) => void,
@@ -31,7 +36,7 @@ export class RoomClient {
 		private onStreamOwners: (owners: StreamOwner[]) => void = () => undefined,
 	) {}
 
-	async join(server: string, room: string, name = "Participante") {
+	async join(server: string, room: string, name = "Participante", resumeToken?: string) {
 		this.close();
 		const pc = new RTCPeerConnection(peerConfig);
 		const ws = new WebSocket(wsURL(server));
@@ -72,7 +77,7 @@ export class RoomClient {
 		};
 		ws.onopen = () => {
 			roomDebug("viewer websocket open");
-			ws.send(JSON.stringify({ type: "join", role: "viewer", room, name: name.trim() || "Participante" }));
+			ws.send(JSON.stringify({ type: "join", role: "viewer", room, name: name.trim() || "Participante", resumeToken }));
 		};
 		ws.onmessage = (event) => {
 			void this.viewerSignal(session, JSON.parse(event.data) as Signal).catch((error: unknown) => {
@@ -317,6 +322,7 @@ export class RoomClient {
 		if (message.type === "joined") {
 			session.joined = true;
 			this.viewerID = message.viewerId;
+			this.resumeToken = message.resumeToken;
 			session.resolveReady();
 			this.onStatus("Na sala · aguardando transmissões");
 			return;

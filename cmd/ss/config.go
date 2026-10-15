@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"os"
 	"strconv"
 	"strings"
@@ -53,6 +55,14 @@ func newWebRTCAPI(publicIP string, udpMin, udpMax uint) (*webrtc.API, error) {
 
 func nextID(prefix string) string {
 	return prefix + "-" + strconv.FormatUint(idCounter.Add(1), 36)
+}
+
+func newResumeToken() string {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(buf)
 }
 
 func envOr(name, fallback string) string {

@@ -8,6 +8,7 @@ export type Signal = {
 	message?: string;
 	publisherId?: string;
 	viewerId?: string;
+	resumeToken?: string;
 	trackIds?: string[];
 	pingId?: string;
 	viewers?: number;

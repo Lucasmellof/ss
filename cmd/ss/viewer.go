@@ -14,6 +14,7 @@ import (
 
 type viewer struct {
 	id          string
+	resumeToken string
 	name        string
 	room        *room
 	socket      *signalSocket
@@ -28,7 +29,7 @@ type viewer struct {
 	negMu       sync.Mutex
 }
 
-func (s *server) handleViewer(rm *room, socket *signalSocket, roomID, name string) {
+func (s *server) handleViewer(rm *room, socket *signalSocket, roomID, name, resumeToken string) {
 	pc, err := s.api.NewPeerConnection(webrtc.Configuration{})
 	if err != nil {
 		_ = socket.write(signalMessage{Type: "error", Message: "não foi possível criar a conexão WebRTC"})
@@ -42,13 +43,18 @@ func (s *server) handleViewer(rm *room, socket *signalSocket, roomID, name strin
 		name = string(runes[:32])
 	}
 	v := &viewer{
-		id:      nextID("view"),
+		id:          nextID("view"),
+		resumeToken: newResumeToken(),
 		name:    name,
 		room:    rm,
 		socket:  socket,
 		pc:      pc,
 		senders: make(map[string]*webrtc.RTPSender),
 		tracks:  make(map[string]*forwardedTrack),
+	}
+	if previous := rm.viewerByResumeToken(resumeToken); previous != nil {
+		log.Printf("viewer=%s replaces stale viewer=%s room=%s", v.id, previous.id, roomID)
+		previous.close("substituído por uma reconexão")
 	}
 	tracks, err := rm.addViewer(v)
 	if err != nil {
@@ -66,7 +72,7 @@ func (s *server) handleViewer(rm *room, socket *signalSocket, roomID, name strin
 		}
 	})
 
-	if err := socket.write(signalMessage{Type: "joined", Role: "viewer", Room: roomID, ViewerID: v.id}); err != nil {
+	if err := socket.write(signalMessage{Type: "joined", Role: "viewer", Room: roomID, ViewerID: v.id, ResumeToken: v.resumeToken}); err != nil {
 		return
 	}
 	rm.broadcastStatus()

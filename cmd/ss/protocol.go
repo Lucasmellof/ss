@@ -17,6 +17,7 @@ type signalMessage struct {
 	Viewers      int           `json:"viewers,omitempty"`
 	PublisherID  string        `json:"publisherId,omitempty"`
 	ViewerID     string        `json:"viewerId,omitempty"`
+	ResumeToken  string        `json:"resumeToken,omitempty"`
 	TrackIDs     []string      `json:"trackIds,omitempty"`
 	PingID       string        `json:"pingId,omitempty"`
 	Name         string        `json:"name,omitempty"`

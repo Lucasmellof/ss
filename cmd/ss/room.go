@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/subtle"
 	"errors"
 	"sort"
 	"strings"
@@ -68,6 +69,20 @@ func (r *room) addViewer(v *viewer) ([]*forwardedTrack, error) {
 		tracks = append(tracks, track)
 	}
 	return tracks, nil
+}
+
+func (r *room) viewerByResumeToken(token string) *viewer {
+	if token == "" {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, v := range r.viewers {
+		if subtle.ConstantTimeCompare([]byte(v.resumeToken), []byte(token)) == 1 {
+			return v
+		}
+	}
+	return nil
 }
 
 func (r *room) addTrack(p *publisher, track *forwardedTrack) error {

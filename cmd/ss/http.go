@@ -61,7 +61,7 @@ func (s *server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	case "publisher":
 		s.handlePublisher(rm, socket, join.Room, join.ViewerID)
 	case "viewer":
-		s.handleViewer(rm, socket, join.Room, join.Name)
+		s.handleViewer(rm, socket, join.Room, join.Name, join.ResumeToken)
 	}
 }
 
