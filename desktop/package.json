@@ -1,6 +1,6 @@
 {
 	"name": "screen-share-desktop",
-	"version": "0.2.5",
+	"version": "0.2.6",
 	"private": true,
 	"description": "Cliente desktop para compartilhamento de tela e áudio.",
 	"author": "Screen Share",
