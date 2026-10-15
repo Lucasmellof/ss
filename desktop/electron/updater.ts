@@ -6,11 +6,23 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 const { autoUpdater } = electronUpdater;
-const RELEASES_API = "https://api.github.com/repos/Lucasmellof/ss/releases/latest";
+const REPO_API = "https://api.github.com/repos/Lucasmellof/ss";
+const RELEASES_API = `${REPO_API}/releases/latest`;
+const CHANGELOG_SIZE = 6;
 const ALLOWED_DOWNLOAD_HOSTS = ["github.com", "githubusercontent.com"];
 
 type GithubAsset = { name: string; size: number; browser_download_url: string };
-type GithubRelease = { tag_name: string; name?: string; body?: string; html_url: string; assets: GithubAsset[] };
+type GithubRelease = {
+	tag_name: string;
+	name?: string;
+	body?: string;
+	html_url: string;
+	assets: GithubAsset[];
+	published_at?: string;
+	draft?: boolean;
+	prerelease?: boolean;
+};
+type GithubCompare = { commits: { commit: { message: string } }[] };
 
 export type UpdateInfo = {
 	currentVersion: string;
@@ -27,6 +39,16 @@ export type UpdateCheckResult =
 	| { status: "up-to-date"; currentVersion: string }
 	| { status: "available"; info: UpdateInfo }
 	| { status: "error"; message: string };
+
+export type ChangelogEntry = {
+	version: string;
+	tag: string;
+	previousTag?: string;
+	publishedAt: string;
+	url: string;
+	notes: string;
+	status: "new" | "current" | "old";
+};
 
 let pendingAsset: { info: UpdateInfo; url: string } | undefined;
 let downloading = false;
@@ -118,7 +140,7 @@ function isAllowedDownload(rawURL: string) {
 
 async function checkViaGithub(): Promise<UpdateCheckResult> {
 	const currentVersion = app.getVersion();
-	const response = await net.fetch(RELEASES_API, { headers: { Accept: "application/vnd.github+json", "User-Agent": "screen-share-updater" } });
+	const response = await githubFetch(RELEASES_API);
 	if (response.status === 404) return { status: "up-to-date", currentVersion };
 	if (!response.ok) throw new Error(`GitHub respondeu ${response.status}`);
 	const release = (await response.json()) as GithubRelease;
@@ -139,6 +161,58 @@ async function checkViaGithub(): Promise<UpdateCheckResult> {
 	pendingAuto = false;
 	pendingAsset = { info, url: asset.browser_download_url };
 	return { status: "available", info };
+}
+
+function githubFetch(url: string) {
+	return net.fetch(url, { headers: { Accept: "application/vnd.github+json", "User-Agent": "screen-share-updater" } });
+}
+
+// As notas geradas pelo GitHub só trazem o link "Full Changelog"; o resto do texto é o que vale mostrar.
+function releaseNotes(body: string) {
+	return body
+		.split(/\r?\n/)
+		.filter((line) => !/^\*\*Full Changelog\*\*/i.test(line.trim()))
+		.join("\n")
+		.trim();
+}
+
+async function fetchChangelog(): Promise<ChangelogEntry[]> {
+	const currentVersion = app.getVersion();
+	const response = await githubFetch(`${REPO_API}/releases?per_page=${CHANGELOG_SIZE + 1}`);
+	if (!response.ok) throw new Error(`GitHub respondeu ${response.status}`);
+	const releases = ((await response.json()) as GithubRelease[]).filter((release) => !release.draft && !release.prerelease);
+	return releases.slice(0, CHANGELOG_SIZE).map((release, index) => {
+		const version = release.tag_name.replace(/^v/i, "");
+		return {
+			version,
+			tag: release.tag_name,
+			previousTag: releases[index + 1]?.tag_name,
+			publishedAt: release.published_at ?? "",
+			url: release.html_url,
+			notes: releaseNotes(release.body ?? ""),
+			status: isNewer(version, currentVersion) ? "new" : isNewer(currentVersion, version) ? "old" : "current",
+		};
+	});
+}
+
+const TAG_PATTERN = /^v?\d+\.\d+\.\d+[\w.-]*$/;
+const changesCache = new Map<string, string[]>();
+
+// Lista os commits entre duas versões, sem os commits de release.
+async function fetchChanges(tag: string, previousTag: string): Promise<string[]> {
+	if (!TAG_PATTERN.test(tag) || !TAG_PATTERN.test(previousTag)) throw new Error("Versão inválida");
+	const key = `${previousTag}...${tag}`;
+	const cached = changesCache.get(key);
+	if (cached) return cached;
+	const response = await githubFetch(`${REPO_API}/compare/${key}`);
+	if (!response.ok) throw new Error(`GitHub respondeu ${response.status}`);
+	const { commits } = (await response.json()) as GithubCompare;
+	const changes = commits
+		.map((item) => item.commit.message.split("\n")[0].trim())
+		.filter((subject) => subject && !/^chore: release\b/i.test(subject))
+		.reverse();
+	changesCache.set(key, changes);
+	return changes;
 }
 
 async function checkForUpdate(): Promise<UpdateCheckResult> {
@@ -214,5 +288,14 @@ export function registerUpdater() {
 			return { status: "error", message: error instanceof Error ? error.message : "Falha ao verificar atualização" } satisfies UpdateCheckResult;
 		}
 	});
+	ipcMain.handle("update:changelog", async () => {
+		try {
+			return await fetchChangelog();
+		} catch (error) {
+			console.error("[Updater] Falha ao carregar o changelog:", error);
+			return [];
+		}
+	});
+	ipcMain.handle("update:changes", (_event, tag: string, previousTag: string) => fetchChanges(tag, previousTag));
 	ipcMain.handle("update:download", (event) => downloadAndQuit(BrowserWindow.fromWebContents(event.sender)));
 }

@@ -9,6 +9,8 @@ contextBridge.exposeInMainWorld("screenShare", {
 	stopAudioLoopback: () => ipcRenderer.invoke("capture:stop-audio-loopback"),
 	checkForUpdate: () => ipcRenderer.invoke("update:check"),
 	downloadUpdate: () => ipcRenderer.invoke("update:download"),
+	changelog: () => ipcRenderer.invoke("update:changelog"),
+	releaseChanges: (tag: string, previousTag: string) => ipcRenderer.invoke("update:changes", tag, previousTag),
 	onUpdateProgress: (callback: (progress: { received: number; total: number }) => void) => {
 		const handler = (_event: Electron.IpcRendererEvent, progress: { received: number; total: number }) => callback(progress);
 		ipcRenderer.on("update:progress", handler);

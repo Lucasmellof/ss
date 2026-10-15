@@ -6,6 +6,7 @@ import { UpdateBanner } from "@/features/update/UpdateBanner";
 
 export const Route = createRootRoute({
 	head: () => ({
+		meta: [{ title: "Screen Share" }],
 		links: [
 			{ rel: "icon", href: "/favicon.ico", sizes: "any" },
 			{ rel: "icon", type: "image/png", href: "/icon.png" },

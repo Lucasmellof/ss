@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session } from "electron";
+import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session, shell } from "electron";
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -13,6 +13,8 @@ protocol.registerSchemesAsPrivileged([{ scheme: "screen-share", privileges: { st
 
 const ROOM_PROTOCOL = "screen-share-room";
 const ROOM_PATTERN = /^[a-zA-Z0-9_-]{8,64}$/;
+
+if (!app.isPackaged) app.setPath("userData", path.join(app.getPath("appData"), "screen-share-desktop-dev"));
 
 const isPrimaryInstance = app.requestSingleInstanceLock();
 if (!isPrimaryInstance) app.quit();
@@ -89,7 +91,6 @@ function stopAudioProcess() {
 		try {
 			activeAudioProcess.kill();
 		} catch {
-			// ignora erro ao encerrar processo
 		}
 		activeAudioProcess = null;
 	}
@@ -220,10 +221,15 @@ function createWindow() {
 		height: 840,
 		minWidth: 900,
 		minHeight: 650,
+		title: "Screen Share",
 		backgroundColor: "#09090b",
 		icon: path.resolve(root, "../resources/icon.png"),
 		webPreferences: { preload: path.join(root, "preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: false },
 	}));
+	window.webContents.setWindowOpenHandler(({ url }) => {
+		if (url.startsWith("https://")) void shell.openExternal(url);
+		return { action: "deny" };
+	});
 	const devURL = process.env.VITE_DEV_SERVER_URL;
 	if (devURL) void window.loadURL(devURL);
 	else void window.loadURL("screen-share://app/");

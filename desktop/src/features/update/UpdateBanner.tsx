@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
+import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ChangelogDialog, formatReleaseDate } from "./ChangelogDialog";
 
 type Progress = { received: number; total: number };
 type CheckState = { status: "checking" } | UpdateCheckResult;
 
-const AUTO_HIDE_MS = 5_000;
+const AUTO_HIDE_MS = 8_000;
+const STATUS_LABEL: Record<ChangelogEntry["status"], string> = { new: "nova", current: "atual", old: "" };
 
 export function UpdateBanner() {
 	const [check, setCheck] = useState<CheckState>({ status: "checking" });
@@ -12,6 +15,10 @@ export function UpdateBanner() {
 	const [progress, setProgress] = useState<Progress | undefined>();
 	const [downloading, setDownloading] = useState(false);
 	const [error, setError] = useState("");
+	const [changelog, setChangelog] = useState<ChangelogEntry[]>([]);
+	const [selected, setSelected] = useState<ChangelogEntry | undefined>();
+	// Depois que o usuário interage com o aviso, ele não some sozinho.
+	const [pinned, setPinned] = useState(false);
 
 	useEffect(() => {
 		const api = window.screenShare;
@@ -27,7 +34,12 @@ export function UpdateBanner() {
 			})
 			.catch((cause: unknown) => {
 				if (active) setCheck({ status: "error", message: cause instanceof Error ? cause.message : "Falha ao verificar atualização" });
-			});
+			})
+			.then(() => api.changelog())
+			.then((entries) => {
+				if (active) setChangelog(entries);
+			})
+			.catch(() => undefined);
 		const unsubscribe = api.onUpdateProgress(setProgress);
 		return () => {
 			active = false;
@@ -36,10 +48,10 @@ export function UpdateBanner() {
 	}, []);
 
 	useEffect(() => {
-		if (check.status !== "up-to-date" && check.status !== "error") return;
+		if (pinned || (check.status !== "up-to-date" && check.status !== "error")) return;
 		const timer = window.setTimeout(() => setHidden(true), AUTO_HIDE_MS);
 		return () => window.clearTimeout(timer);
-	}, [check.status]);
+	}, [check.status, pinned]);
 
 	if (hidden) return null;
 
@@ -66,20 +78,58 @@ export function UpdateBanner() {
 		);
 	}
 
-	if (check.status === "up-to-date") {
-		return (
-			<div className={box} role="status">
-				<p className="text-sm font-medium">Você está na versão mais recente</p>
-				<p className="mt-1 text-xs text-app-muted">Versão {check.currentVersion}.</p>
-			</div>
-		);
-	}
+	const closeButton = (
+		<button type="button" className="absolute top-3 right-3 rounded-sm text-app-muted hover:text-app-text" aria-label="Fechar" onClick={() => setHidden(true)}>
+			<XIcon className="size-4" />
+		</button>
+	);
 
-	if (check.status === "error") {
+	const changelogList =
+		changelog.length > 0 ? (
+			<div className="mt-3 border-t border-app-line pt-3">
+				<p className="text-xs font-medium text-app-muted">Novidades</p>
+				<ul className="mt-1.5 space-y-0.5">
+					{changelog.map((entry) => (
+						<li key={entry.tag}>
+							<button
+								type="button"
+								className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1 text-left text-sm hover:bg-app-panel"
+								onClick={() => {
+									setPinned(true);
+									setSelected(entry);
+								}}
+							>
+								<span>v{entry.version}</span>
+								<span className="flex items-center gap-2 text-xs text-app-muted">
+									{STATUS_LABEL[entry.status] ? <span className="text-app-accent">{STATUS_LABEL[entry.status]}</span> : null}
+									{formatReleaseDate(entry.publishedAt)}
+								</span>
+							</button>
+						</li>
+					))}
+				</ul>
+			</div>
+		) : null;
+
+	const dialog = <ChangelogDialog entry={selected} onClose={() => setSelected(undefined)} />;
+
+	if (check.status === "up-to-date" || check.status === "error") {
 		return (
-			<div className={box} role="status">
-				<p className="text-sm font-medium">Não foi possível verificar atualizações</p>
-				<p className="mt-1 text-xs text-app-muted">{check.message}</p>
+			<div className={box} role="status" onPointerEnter={() => setPinned(true)}>
+				{closeButton}
+				{check.status === "up-to-date" ? (
+					<>
+						<p className="pr-6 text-sm font-medium">Você está na versão mais recente</p>
+						<p className="mt-1 text-xs text-app-muted">Versão {check.currentVersion}.</p>
+					</>
+				) : (
+					<>
+						<p className="pr-6 text-sm font-medium">Não foi possível verificar atualizações</p>
+						<p className="mt-1 text-xs text-app-muted">{check.message}</p>
+					</>
+				)}
+				{changelogList}
+				{dialog}
 			</div>
 		);
 	}
@@ -104,6 +154,8 @@ export function UpdateBanner() {
 				</div>
 			)}
 			{error ? <p className="mt-2 text-xs text-app-danger">{error}</p> : null}
+			{changelogList}
+			{dialog}
 		</div>
 	);
 }
