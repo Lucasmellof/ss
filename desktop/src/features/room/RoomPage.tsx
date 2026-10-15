@@ -8,7 +8,7 @@ import { useRoomPing } from "./RoomPingProvider";
 
 export function RoomPage() {
 	const navigate = useNavigate();
-	const { session, capture, stage, tiles, leave } = useRoomApp();
+	const { session, capture, stage, sounds, tiles, leave } = useRoomApp();
 	const ping = useRoomPing();
 	const [linkCopied, setLinkCopied] = useState(false);
 
@@ -32,6 +32,7 @@ export function RoomPage() {
 				pinned={stage.pinned}
 				sharing={capture.sharing}
 				startingShare={capture.startingShare}
+				soundsEnabled={sounds.soundsEnabled}
 				stageLayout={stage.stageLayout}
 				layoutManual={stage.stageLayoutManual}
 				stageZoom={stage.stageZoom}
@@ -51,6 +52,7 @@ export function RoomPage() {
 				}}
 				onShare={() => void capture.loadSources()}
 				onStopShare={capture.stopSharing}
+				onToggleSounds={sounds.toggleSounds}
 				onLeave={() => {
 					leave();
 					void navigate({ to: "/", replace: true });

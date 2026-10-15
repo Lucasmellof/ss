@@ -3,6 +3,7 @@ import { useScreenCapture } from "@/features/capture/useScreenCapture";
 import { type StreamOwner } from "@/lib/room";
 import { useRoomSession } from "./useRoomSession";
 import { type Tile } from "./types";
+import { useRoomSounds } from "./useRoomSounds";
 import { useStageControls } from "./useStageControls";
 import { RoomPingProvider } from "./RoomPingProvider";
 
@@ -12,6 +13,7 @@ type RoomAppContextValue = {
 	session: ReturnType<typeof useRoomSession>;
 	capture: ReturnType<typeof useScreenCapture>;
 	stage: ReturnType<typeof useStageControls>;
+	sounds: ReturnType<typeof useRoomSounds>;
 	tiles: Tile[];
 	leave: () => void;
 };
@@ -56,6 +58,11 @@ export function RoomSessionProvider({ children }: PropsWithChildren) {
 		}),
 	];
 	const stage = useStageControls(tiles);
+	const sounds = useRoomSounds({
+		joined: session.joined,
+		members: session.members,
+		streamOwners: session.streamOwners,
+	});
 	const leave = () => {
 		capture.closePicker();
 		session.leave();
@@ -63,7 +70,7 @@ export function RoomSessionProvider({ children }: PropsWithChildren) {
 	};
 
 	// The provider value intentionally follows the live room, capture and stage state.
-	const contextValue = { session, capture, stage, tiles, leave };
+	const contextValue = { session, capture, stage, sounds, tiles, leave };
 	return (
 		<RoomAppContext.Provider value={contextValue}>
 			<RoomPingProvider key={session.joined ? "joined" : "idle"} client={session.client} joined={session.joined}>

@@ -32,6 +32,7 @@ export type RoomViewProps = {
 	pinned?: string;
 	sharing: boolean;
 	startingShare: boolean;
+	soundsEnabled: boolean;
 	stageLayout: StageLayout;
 	layoutManual: boolean;
 	stageZoom: number;
@@ -41,6 +42,7 @@ export type RoomViewProps = {
 	onShare: () => void;
 	onStopShare: () => void;
 	onLeave: () => void;
+	onToggleSounds: () => void;
 	onStageLayout: (layout: StageLayout) => void;
 	onStageZoom: (zoom: number) => void;
 };

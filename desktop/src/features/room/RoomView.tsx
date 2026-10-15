@@ -1,5 +1,21 @@
 import { type CSSProperties, type PointerEvent, type WheelEvent, useEffect, useRef, useState } from "react";
-import { Activity, Check, Copy, Expand, Grid2X2, LogOut, Maximize2, Minus, MonitorUp, Plus, RefreshCw, Scan, Users } from "lucide-react";
+import {
+	Activity,
+	Check,
+	Copy,
+	Expand,
+	Grid2X2,
+	LogOut,
+	Maximize2,
+	Minus,
+	MonitorUp,
+	Plus,
+	RefreshCw,
+	Scan,
+	Users,
+	Volume2,
+	VolumeX,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ParticipantCard } from "./ParticipantCard";
 import { StageMiniMap } from "./StageMiniMap";
@@ -34,6 +50,7 @@ export function RoomView({
 	pinned,
 	sharing,
 	startingShare,
+	soundsEnabled,
 	stageLayout,
 	layoutManual,
 	stageZoom,
@@ -43,6 +60,7 @@ export function RoomView({
 	onShare,
 	onStopShare,
 	onLeave,
+	onToggleSounds,
 	onStageLayout,
 	onStageZoom,
 }: RoomViewProps) {
@@ -161,6 +179,19 @@ export function RoomView({
 						<Activity className="size-3" /> {ping === undefined ? "Ping --" : `Ping ${ping} ms`}
 					</span>
 					<span className="text-[10px] text-[#7f8992] max-sm:hidden">Conectado</span>
+					<button
+						className={cn(
+							"inline-flex size-[30px] items-center justify-center rounded-[7px] border border-[#282d33] bg-[#111317] text-[#c8d0d6] hover:border-[#49535d] hover:bg-[#1a1e23]",
+							!soundsEnabled && "text-[#7f8992]",
+						)}
+						type="button"
+						onClick={onToggleSounds}
+						title={soundsEnabled ? "Silenciar avisos sonoros" : "Ativar avisos sonoros"}
+						aria-label={soundsEnabled ? "Silenciar avisos sonoros" : "Ativar avisos sonoros"}
+						aria-pressed={soundsEnabled}
+					>
+						{soundsEnabled ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
+					</button>
 					<button
 						className="inline-flex items-center gap-1.5 rounded-[7px] border border-[#282d33] bg-[#111317] px-2.5 py-1.5 text-[11px] font-extrabold text-[#c8d0d6] hover:border-[#49535d] hover:bg-[#1a1e23]"
 						type="button"
