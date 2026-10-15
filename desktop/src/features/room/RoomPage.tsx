@@ -8,7 +8,7 @@ import { useRoomPing } from "./RoomPingProvider";
 
 export function RoomPage() {
 	const navigate = useNavigate();
-	const { session, capture, stage, sounds, tiles, leave } = useRoomApp();
+	const { session, capture, stage, sounds, tiles, hiddenTiles, hideTile, showTile, leave } = useRoomApp();
 	const ping = useRoomPing();
 	const [linkCopied, setLinkCopied] = useState(false);
 
@@ -28,6 +28,9 @@ export function RoomPage() {
 				members={session.members}
 				streamingMembers={session.streamingMembers}
 				tiles={tiles}
+				hiddenTiles={hiddenTiles}
+				onHideTile={hideTile}
+				onShowTile={showTile}
 				featured={stage.featured}
 				pinned={stage.pinned}
 				sharing={capture.sharing}

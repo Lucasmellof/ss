@@ -1,4 +1,4 @@
-export type RoomSound = "member-joined" | "member-left" | "share-started" | "share-stopped";
+export type RoomSound = "self-joined" | "self-left" | "member-joined" | "member-left" | "share-started" | "share-stopped";
 
 type Tone = {
 	freq: number;
@@ -13,6 +13,20 @@ const MASTER_GAIN = 0.32;
 const ATTACK = 0.012;
 
 const tones: Record<RoomSound, Tone[]> = {
+	// Acorde subindo em três notas: você entrou na sala.
+	"self-joined": [
+		{ freq: 440, start: 0, duration: 0.14 },
+		{ freq: 659.25, start: 0.08, duration: 0.14 },
+		{ freq: 880, start: 0.16, duration: 0.14 },
+		{ freq: 1318.51, start: 0.24, duration: 0.4, gain: 0.9 },
+	],
+	// Os mesmos tons descendo e deslizando: você saiu ou a conexão caiu.
+	"self-left": [
+		{ freq: 880, start: 0, duration: 0.14, gain: 0.9 },
+		{ freq: 659.25, start: 0.08, duration: 0.14, gain: 0.9 },
+		{ freq: 493.88, start: 0.16, duration: 0.14, gain: 0.9 },
+		{ freq: 329.63, start: 0.24, duration: 0.4, gain: 0.85, slideTo: 261.63 },
+	],
 	// Sino curto subindo: alguém entrou na sala.
 	"member-joined": [
 		{ freq: 587.33, start: 0, duration: 0.16 },

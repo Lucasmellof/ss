@@ -1,9 +1,10 @@
+import { Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ParticipantCardProps } from "./types";
 
 const participantColors = ["bg-[#202326]", "bg-[#4c302a]", "bg-[#423625]", "bg-[#163d29]", "bg-[#302a3d]", "bg-[#3d2e22]", "bg-[#263d43]"];
 
-export function ParticipantCard({ member, self, compact = false, fill = false }: ParticipantCardProps) {
+export function ParticipantCard({ member, self, compact = false, fill = false, onWatch }: ParticipantCardProps) {
 	let hash = 0;
 	for (const character of member.id) hash = (hash * 31 + character.charCodeAt(0)) | 0;
 	const color = participantColors[Math.abs(hash) % participantColors.length];
@@ -14,8 +15,10 @@ export function ParticipantCard({ member, self, compact = false, fill = false }:
 				color,
 				compact && "h-auto",
 				fill && "h-full w-full aspect-auto",
+				onWatch && "cursor-pointer border-2 border-transparent transition-colors hover:border-purple-800",
 			)}
-			title={member.name}
+			title={onWatch ? `Voltar a assistir ${member.name}` : member.name}
+			onClick={onWatch}
 		>
 			<div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/20" />
 			<div
@@ -39,9 +42,16 @@ export function ParticipantCard({ member, self, compact = false, fill = false }:
 				<span
 					className={cn("inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-[#bac4ca]", compact && "hidden")}
 				>
-					<span className="size-1.5 rounded-full bg-app-accent" /> conectado
+					<span className="size-1.5 rounded-full bg-app-accent" /> {onWatch ? "transmitindo" : "conectado"}
 				</span>
 			</div>
+			{onWatch && (
+				<div className="absolute inset-0 z-[3] grid place-items-center bg-black/45 transition-colors hover:bg-black/30">
+					<span className="inline-flex items-center gap-2 rounded-[10px] border border-white/25 bg-black/70 px-4 py-2.5 text-[clamp(12px,1.6vw,18px)] font-black tracking-wide text-white shadow-[0_8px_28px_rgba(0,0,0,.45)]">
+						<Eye className="size-[1.2em]" /> ASSISTIR TRANSMISSÃO
+					</span>
+				</div>
+			)}
 		</article>
 	);
 }

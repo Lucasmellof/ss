@@ -15,6 +15,7 @@ export type RoomSoundsOptions = {
 export function useRoomSounds({ joined, members, streamOwners }: RoomSoundsOptions) {
 	const [enabled, setEnabled] = useState(() => storedValue(STORAGE_KEY) !== "off");
 	const enabledRef = useRef(enabled);
+	const wasJoinedRef = useRef(joined);
 	const knownMembers = useRef<Set<string> | undefined>(undefined);
 	const knownOwners = useRef<Map<string, string> | undefined>(undefined);
 	const pendingSounds = useRef<number[]>([]);
@@ -27,6 +28,14 @@ export function useRoomSounds({ joined, members, streamOwners }: RoomSoundsOptio
 	useEffect(() => {
 		enabledRef.current = enabled;
 	}, [enabled]);
+
+	useEffect(() => {
+		const wasJoined = wasJoinedRef.current;
+		wasJoinedRef.current = joined;
+		if (wasJoined === joined || !enabledRef.current) return;
+		// Cobre entrar, sair pelo botão e queda de conexão: todos mudam `joined`.
+		playRoomSound(joined ? "self-joined" : "self-left");
+	}, [joined]);
 
 	useEffect(() => {
 		if (!joined) {

@@ -6,6 +6,7 @@ export type Tile = {
 	name: string;
 	stream: MediaStream;
 	local?: boolean;
+	ownerId?: string;
 };
 export type StageLayout = "grid" | "focus";
 export type StagePan = { x: number; y: number };
@@ -28,6 +29,9 @@ export type RoomViewProps = {
 	members: Member[];
 	streamingMembers: string[];
 	tiles: Tile[];
+	hiddenTiles: Tile[];
+	onHideTile: (id: string) => void;
+	onShowTile: (id: string) => void;
 	featured?: Tile;
 	pinned?: string;
 	sharing: boolean;
@@ -52,6 +56,7 @@ export type ParticipantCardProps = {
 	self: boolean;
 	compact?: boolean;
 	fill?: boolean;
+	onWatch?: () => void;
 };
 
 export type VideoTileProps = {
@@ -59,4 +64,5 @@ export type VideoTileProps = {
 	large?: boolean;
 	pinned: boolean;
 	onPin: (id: string) => void;
+	onHide?: (id: string) => void;
 };

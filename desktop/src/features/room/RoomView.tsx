@@ -4,10 +4,13 @@ import {
 	Check,
 	Copy,
 	Expand,
+	Eye,
+	EyeOff,
 	Grid2X2,
 	LogOut,
 	Maximize2,
 	Minus,
+	Monitor,
 	MonitorUp,
 	Plus,
 	RefreshCw,
@@ -46,6 +49,9 @@ export function RoomView({
 	members,
 	streamingMembers,
 	tiles,
+	hiddenTiles,
+	onHideTile,
+	onShowTile,
 	featured,
 	pinned,
 	sharing,
@@ -65,14 +71,24 @@ export function RoomView({
 	onStageZoom,
 }: RoomViewProps) {
 	const [peopleOpen, setPeopleOpen] = useState(false);
+	const [streamsOpen, setStreamsOpen] = useState(false);
 	const [fullscreen, setFullscreen] = useState(false);
 	const [stagePan, setStagePan] = useState<StagePan>({ x: 0, y: 0 });
 	const [dragging, setDragging] = useState(false);
 	const dragRef = useRef<{ x: number; y: number; pan: StagePan } | undefined>(undefined);
 	const draggedRef = useRef(false);
-	const visibleMembers = members.filter((member) => !streamingMembers.includes(member.id) && !(sharing && member.name === selfName));
+	const hiddenOwnerIDs = hiddenTiles
+		.map((tile) => tile.ownerId)
+		.filter((id): id is string => Boolean(id) && !tiles.some((tile) => tile.ownerId === id));
+	const visibleMembers = members.filter(
+		(member) => (!streamingMembers.includes(member.id) || hiddenOwnerIDs.includes(member.id)) && !(sharing && member.name === selfName),
+	);
+	const watchHandler = (memberID: string) =>
+		hiddenOwnerIDs.includes(memberID)
+			? () => hiddenTiles.filter((tile) => tile.ownerId === memberID).forEach((tile) => onShowTile(tile.id))
+			: undefined;
 	const cardCount = visibleMembers.length + tiles.length;
-	const effectiveLayout: StageLayout = tiles.length === 0 ? "grid" : tiles.length === 1 ? "focus" : layoutManual ? stageLayout : "grid";
+	const effectiveLayout: StageLayout = tiles.length === 0 ? "grid" : layoutManual ? stageLayout : tiles.length === 1 ? "focus" : "grid";
 	const gridColumns = cardCount <= 1 ? 1 : cardCount <= 6 ? 2 : cardCount <= 9 ? 3 : 4;
 	const showLayoutControls = tiles.length > 1;
 	const showZoomReset = stageZoom > 1;
@@ -195,11 +211,68 @@ export function RoomView({
 					<button
 						className="inline-flex items-center gap-1.5 rounded-[7px] border border-[#282d33] bg-[#111317] px-2.5 py-1.5 text-[11px] font-extrabold text-[#c8d0d6] hover:border-[#49535d] hover:bg-[#1a1e23]"
 						type="button"
-						onClick={() => setPeopleOpen((open) => !open)}
+						onClick={() => {
+							setStreamsOpen((open) => !open);
+							setPeopleOpen(false);
+						}}
+						title="Escolher quais transmissões assistir"
+					>
+						<Monitor className="size-3.5" /> {tiles.filter((tile) => !tile.local).length}/{tiles.filter((tile) => !tile.local).length + hiddenTiles.length}
+					</button>
+					<button
+						className="inline-flex items-center gap-1.5 rounded-[7px] border border-[#282d33] bg-[#111317] px-2.5 py-1.5 text-[11px] font-extrabold text-[#c8d0d6] hover:border-[#49535d] hover:bg-[#1a1e23]"
+						type="button"
+						onClick={() => {
+							setPeopleOpen((open) => !open);
+							setStreamsOpen(false);
+						}}
 					>
 						<Users className="size-3.5" /> {members.length}
 					</button>
 				</div>
+				{streamsOpen && (
+					<div className="absolute top-11 right-0 z-30 w-[270px] rounded-[10px] border border-[#2a3037] bg-[#15181c] p-2.5 shadow-[0_18px_60px_rgba(0,0,0,.55)]">
+						<div className="flex items-center justify-between border-b border-[#272d34] px-1.5 pb-2 text-xs">
+							<strong>Transmissões</strong>
+							<span className="text-[11px] text-app-muted">{tiles.filter((tile) => !tile.local).length + hiddenTiles.length}</span>
+						</div>
+						{tiles.filter((tile) => !tile.local).length + hiddenTiles.length === 0 ? (
+							<p className="my-1 px-1.5 text-xs text-app-muted">Nenhuma transmissão no momento.</p>
+						) : (
+							[...tiles.filter((tile) => !tile.local).map((tile) => ({ tile, watching: true })), ...hiddenTiles.map((tile) => ({ tile, watching: false }))].map(
+								({ tile, watching }) => (
+									<div
+										className="flex items-center gap-2 rounded-lg px-1 py-1.5 text-xs text-[#d7dfe5] hover:bg-app-panel-raised"
+										key={tile.id}
+									>
+										<Monitor className={cn("size-3.5 shrink-0", watching ? "text-app-accent" : "text-[#7f8992]")} />
+										<span className={cn("overflow-hidden text-ellipsis whitespace-nowrap", !watching && "text-[#7f8992]")}>{tile.name}</span>
+										<div className="ml-auto flex items-center gap-1">
+											{watching && (
+												<button
+													className="rounded-[6px] border border-[#282d33] px-1.5 py-1 text-[10px] font-extrabold hover:border-[#49535d]"
+													type="button"
+													onClick={() => onPin(tile.id)}
+												>
+													Ver
+												</button>
+											)}
+											<button
+												className="grid size-6 place-items-center rounded-[6px] border border-[#282d33] hover:border-[#49535d]"
+												type="button"
+												onClick={() => (watching ? onHideTile(tile.id) : onShowTile(tile.id))}
+												title={watching ? "Parar de assistir" : "Voltar a assistir"}
+												aria-label={watching ? `Parar de assistir ${tile.name}` : `Voltar a assistir ${tile.name}`}
+											>
+												{watching ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+											</button>
+										</div>
+									</div>
+								),
+							)
+						)}
+					</div>
+				)}
 				{peopleOpen && (
 					<div className="absolute top-11 right-0 z-30 w-[235px] rounded-[10px] border border-[#2a3037] bg-[#15181c] p-2.5 shadow-[0_18px_60px_rgba(0,0,0,.55)]">
 						<div className="flex items-center justify-between border-b border-[#272d34] px-1.5 pb-2 text-xs">
@@ -255,10 +328,10 @@ export function RoomView({
 						style={stageStyle}
 					>
 						{effectiveLayout === "focus" && featured ? (
-							<VideoTile tile={featured} large pinned={pinned === featured.id} onPin={onPin} />
+							<VideoTile tile={featured} large pinned={pinned === featured.id} onPin={onPin} onHide={onHideTile} />
 						) : visibleMembers.length === 1 && tiles.length === 0 ? (
 							<div className="flex h-full min-h-0 w-full items-center justify-center">
-								<ParticipantCard member={visibleMembers[0]} self={visibleMembers[0].name === selfName} fill />
+								<ParticipantCard member={visibleMembers[0]} self={visibleMembers[0].name === selfName} fill onWatch={watchHandler(visibleMembers[0].id)} />
 							</div>
 						) : cardCount > 0 ? (
 							<div className={cn("grid h-full min-h-0 w-full content-center gap-2.5 p-0", gridColumnClasses[gridColumns])}>
@@ -268,10 +341,11 @@ export function RoomView({
 										member={member}
 										self={member.name === selfName}
 										fill={cardCount === 1}
+										onWatch={watchHandler(member.id)}
 									/>
 								))}
 								{tiles.map((tile) => (
-									<VideoTile key={tile.id} tile={tile} pinned={pinned === tile.id} onPin={onPin} />
+									<VideoTile key={tile.id} tile={tile} pinned={pinned === tile.id} onPin={onPin} onHide={onHideTile} />
 								))}
 							</div>
 						) : (
@@ -291,7 +365,7 @@ export function RoomView({
 						{tiles
 							.filter((tile) => tile.id !== featured?.id)
 							.map((tile) => (
-								<VideoTile key={tile.id} tile={tile} pinned={pinned === tile.id} onPin={onPin} />
+								<VideoTile key={tile.id} tile={tile} pinned={pinned === tile.id} onPin={onPin} onHide={onHideTile} />
 							))}
 					</div>
 				)}

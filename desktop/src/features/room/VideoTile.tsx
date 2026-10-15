@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { Pin, Volume1, Volume2, VolumeX } from "lucide-react";
+import { EyeOff, Pin,Volume1, Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { roomDebug, roomDebugError } from "@/lib/room/debug";
 import type { VideoTileProps } from "./types";
 
-export function VideoTile({ tile, large, pinned, onPin }: VideoTileProps) {
+export function VideoTile({ tile, large, pinned, onPin, onHide }: VideoTileProps) {
 	const ref = useRef<HTMLVideoElement>(null);
 	const [audioBlocked, setAudioBlocked] = useState(false);
-	const [muted, setMuted] = useState(tile.local ?? false);
+	const [muted, setMuted] = useState(true);
 	const [volume, setVolume] = useState(1);
 
 	useEffect(() => {
@@ -115,19 +115,22 @@ export function VideoTile({ tile, large, pinned, onPin }: VideoTileProps) {
 			<div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-gradient-to-t from-black/80 via-black/30 to-transparent px-3 pb-2.5 pt-7 text-[11px] font-bold text-white">
 				<span>{tile.name}</span>
 				<div className="flex items-center gap-1.5">
-					{audioBlocked && (
+					{!tile.local && (muted || audioBlocked) && (
 						<button
-							className="rounded-[7px] bg-app-accent px-2 py-1.5 text-[10px] font-extrabold text-[#07150f]"
+							className="inline-flex h-[30px] items-center gap-1.5 rounded-lg bg-app-accent px-2.5 text-[10px] font-extrabold text-[#07150f]"
 							type="button"
-							onClick={() => {
+							onClick={(event) => {
+								event.stopPropagation();
 								setMuted(false);
-								void ref.current?.play().then(() => setAudioBlocked(false));
+								setAudioBlocked(false);
+								if (volume === 0) setVolume(1);
+								void ref.current?.play().catch(() => setAudioBlocked(true));
 							}}
 						>
-							Ativar som
+							<VolumeX className="size-3.5" /> Ativar som
 						</button>
 					)}
-					{!tile.local && (
+					{!tile.local && !muted && !audioBlocked && (
 						<>
 							<label
 								className="flex items-center gap-1 rounded-lg border border-white/15 bg-black/65 px-1.5 text-[#dbe2e7]"
@@ -170,6 +173,20 @@ export function VideoTile({ tile, large, pinned, onPin }: VideoTileProps) {
 					>
 						<Pin className="size-3.5" />
 					</button>
+					{!tile.local && onHide && (
+						<button
+							className="inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-white/15 bg-black/65 px-2 text-[10px] font-extrabold text-[#dbe2e7] hover:border-app-danger/40 hover:bg-app-danger/12 hover:text-app-danger"
+							type="button"
+							onClick={(event) => {
+								event.stopPropagation();
+								onHide(tile.id);
+							}}
+							title={`Parar de assistir ${tile.name}`}
+							aria-label={`Parar de assistir ${tile.name}`}
+						>
+							<EyeOff className="size-3.5" /> Sair da transmissão
+						</button>
+					)}
 				</div>
 			</div>
 		</article>
