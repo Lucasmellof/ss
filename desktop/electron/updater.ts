@@ -1,9 +1,11 @@
 import { app, BrowserWindow, ipcMain, net, shell } from "electron";
+import electronUpdater from "electron-updater";
 import fs from "node:fs";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
+const { autoUpdater } = electronUpdater;
 const RELEASES_API = "https://api.github.com/repos/Lucasmellof/ss/releases/latest";
 const ALLOWED_DOWNLOAD_HOSTS = ["github.com", "githubusercontent.com"];
 
@@ -17,6 +19,8 @@ export type UpdateInfo = {
 	releaseURL: string;
 	assetName: string;
 	assetSize: number;
+	/** true: o app baixa e instala sozinho e reinicia; false: o arquivo é baixado para a pasta Downloads. */
+	autoInstall: boolean;
 };
 
 export type UpdateCheckResult =
@@ -26,6 +30,47 @@ export type UpdateCheckResult =
 
 let pendingAsset: { info: UpdateInfo; url: string } | undefined;
 let downloading = false;
+let progressWindow: BrowserWindow | null = null;
+
+// O instalador NSIS se atualiza sozinho; o portátil e o Linux seguem o fluxo de baixar o arquivo.
+const canSelfUpdate = () => process.platform === "win32" && app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE;
+let autoUpdaterReady = false;
+let pendingAuto = false;
+
+function setupAutoUpdater() {
+	if (autoUpdaterReady) return;
+	autoUpdaterReady = true;
+	autoUpdater.autoDownload = false;
+	autoUpdater.autoInstallOnAppQuit = false;
+	autoUpdater.on("download-progress", (progress) => {
+		if (progressWindow && !progressWindow.isDestroyed()) {
+			progressWindow.webContents.send("update:progress", { received: progress.transferred, total: progress.total });
+		}
+	});
+}
+
+async function checkWithAutoUpdater(): Promise<UpdateCheckResult> {
+	setupAutoUpdater();
+	const currentVersion = app.getVersion();
+	const result = await autoUpdater.checkForUpdates();
+	if (!result?.isUpdateAvailable) return { status: "up-to-date", currentVersion };
+	const { updateInfo } = result;
+	const file = updateInfo.files[0];
+	pendingAuto = true;
+	pendingAsset = undefined;
+	return {
+		status: "available",
+		info: {
+			currentVersion,
+			version: updateInfo.version,
+			notes: typeof updateInfo.releaseNotes === "string" ? updateInfo.releaseNotes : "",
+			releaseURL: `https://github.com/Lucasmellof/ss/releases/tag/v${updateInfo.version}`,
+			assetName: path.basename(file?.url ?? updateInfo.path),
+			assetSize: file?.size ?? 0,
+			autoInstall: true,
+		},
+	};
+}
 
 function parseVersion(value: string) {
 	return value
@@ -71,7 +116,7 @@ function isAllowedDownload(rawURL: string) {
 	}
 }
 
-async function checkForUpdate(): Promise<UpdateCheckResult> {
+async function checkViaGithub(): Promise<UpdateCheckResult> {
 	const currentVersion = app.getVersion();
 	const response = await net.fetch(RELEASES_API, { headers: { Accept: "application/vnd.github+json", "User-Agent": "screen-share-updater" } });
 	if (response.status === 404) return { status: "up-to-date", currentVersion };
@@ -89,12 +134,43 @@ async function checkForUpdate(): Promise<UpdateCheckResult> {
 		releaseURL: release.html_url,
 		assetName: path.basename(asset.name),
 		assetSize: asset.size,
+		autoInstall: false,
 	};
+	pendingAuto = false;
 	pendingAsset = { info, url: asset.browser_download_url };
 	return { status: "available", info };
 }
 
+async function checkForUpdate(): Promise<UpdateCheckResult> {
+	if (canSelfUpdate()) {
+		try {
+			return await checkWithAutoUpdater();
+		} catch (error) {
+			// Releases antigas não têm latest.yml; nesse caso cai para o download manual.
+			console.error("[Updater] Auto-update indisponível, usando download manual:", error);
+		}
+	}
+	return checkViaGithub();
+}
+
+async function installAutomatically(window: BrowserWindow | null) {
+	if (downloading) throw new Error("O download já está em andamento");
+	downloading = true;
+	progressWindow = window;
+	try {
+		await autoUpdater.downloadUpdate();
+	} finally {
+		downloading = false;
+	}
+	// Instala em modo silencioso e reabre o aplicativo já atualizado.
+	autoUpdater.quitAndInstall(true, true);
+}
+
 async function downloadAndQuit(window: BrowserWindow | null) {
+	if (pendingAuto) {
+		await installAutomatically(window);
+		return "";
+	}
 	if (!pendingAsset) throw new Error("Nenhuma atualização disponível");
 	if (downloading) throw new Error("O download já está em andamento");
 	downloading = true;

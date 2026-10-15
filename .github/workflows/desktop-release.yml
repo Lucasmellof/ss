@@ -38,6 +38,8 @@ jobs:
           path: |
             desktop/artifacts/electron-builder-release/ScreenShare-*-portable.exe
             desktop/artifacts/electron-builder-release/ScreenShare-Setup-*.exe
+            desktop/artifacts/electron-builder-release/ScreenShare-Setup-*.exe.blockmap
+            desktop/artifacts/electron-builder-release/latest.yml
           if-no-files-found: error
 
   build-linux:

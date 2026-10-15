@@ -9,6 +9,7 @@ declare global {
 		releaseURL: string;
 		assetName: string;
 		assetSize: number;
+		autoInstall: boolean;
 	};
 	type UpdateCheckResult =
 		| { status: "up-to-date"; currentVersion: string }

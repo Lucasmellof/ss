@@ -91,7 +91,7 @@ export function UpdateBanner() {
 			<p className="mt-1 text-xs text-app-muted">Você está na versão {update.currentVersion}.</p>
 			{downloading ? (
 				<p className="mt-3 text-xs text-app-muted">
-					{percent === undefined ? "Baixando..." : `Baixando... ${percent}%`} O aplicativo será fechado ao terminar.
+					{percent === undefined ? "Baixando..." : `Baixando... ${percent}%`} {update.autoInstall ? "O aplicativo será reiniciado ao terminar." : "O aplicativo será fechado ao terminar."}
 				</p>
 			) : (
 				<div className="mt-3 flex gap-2">

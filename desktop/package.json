@@ -31,6 +31,7 @@
 		"@tanstack/react-start": "latest",
 		"class-variance-authority": "latest",
 		"clsx": "latest",
+		"electron-updater": "^6.8.9",
 		"lucide-react": "latest",
 		"radix-ui": "^1.6.7",
 		"react": "latest",
@@ -57,6 +58,13 @@
 		"appId": "dev.lucas.screen-share",
 		"productName": "Screen Share",
 		"asar": true,
+		"publish": [
+			{
+				"provider": "github",
+				"owner": "Lucasmellof",
+				"repo": "ss"
+			}
+		],
 		"directories": {
 			"output": "artifacts/electron-builder-release"
 		},
