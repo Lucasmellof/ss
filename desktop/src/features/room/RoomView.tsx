@@ -206,16 +206,17 @@ export function RoomView({
 					<span className="text-[10px] text-[#7f8992] max-sm:hidden">Conectado</span>
 					<button
 						className={cn(
-							"inline-flex size-[30px] items-center justify-center rounded-[7px] border border-[#282d33] bg-[#111317] text-[#c8d0d6] hover:border-[#49535d] hover:bg-[#1a1e23]",
+							"inline-flex items-center gap-1.5 rounded-[7px] border border-[#282d33] bg-[#111317] px-2.5 py-1.5 text-[11px] font-extrabold text-[#c8d0d6] hover:border-[#49535d] hover:bg-[#1a1e23]",
 							!soundsEnabled && "text-[#7f8992]",
 						)}
 						type="button"
 						onClick={onToggleSounds}
-						title={soundsEnabled ? "Silenciar avisos sonoros" : "Ativar avisos sonoros"}
-						aria-label={soundsEnabled ? "Silenciar avisos sonoros" : "Ativar avisos sonoros"}
+						title={soundsEnabled ? "Desativar efeitos sonoros" : "Ativar efeitos sonoros"}
+						aria-label={soundsEnabled ? "Desativar efeitos sonoros" : "Ativar efeitos sonoros"}
 						aria-pressed={soundsEnabled}
 					>
 						{soundsEnabled ? <Volume2 className="size-3.5" /> : <VolumeX className="size-3.5" />}
+						<span className="max-md:hidden">{soundsEnabled ? "Desativar efeitos sonoros" : "Ativar efeitos sonoros"}</span>
 					</button>
 					<button
 						className="inline-flex items-center gap-1.5 rounded-[7px] border border-[#282d33] bg-[#111317] px-2.5 py-1.5 text-[11px] font-extrabold text-[#c8d0d6] hover:border-[#49535d] hover:bg-[#1a1e23]"
