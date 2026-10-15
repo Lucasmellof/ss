@@ -48,7 +48,11 @@ function isNewer(candidate: string, current: string) {
 
 function pickAsset(assets: GithubAsset[]) {
 	if (process.platform === "win32") {
-		return assets.find((asset) => /portable\.exe$/i.test(asset.name)) ?? assets.find((asset) => /\.exe$/i.test(asset.name));
+		const portable = assets.find((asset) => /portable\.exe$/i.test(asset.name));
+		const installer = assets.find((asset) => /setup.*\.exe$/i.test(asset.name));
+		// Quem usa a versão instalada recebe o instalador; o portátil recebe o portátil.
+		const installed = app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE;
+		return (installed ? (installer ?? portable) : (portable ?? installer)) ?? assets.find((asset) => /\.exe$/i.test(asset.name));
 	}
 	if (process.platform === "linux") {
 		const appImage = assets.find((asset) => /\.AppImage$/i.test(asset.name));

@@ -18,7 +18,7 @@ bun install
 bun run dist:win
 ```
 
-O executável portátil fica em `desktop/artifacts/electron-builder-release/ScreenShare-0.2.0-portable.exe`.
+No Windows são gerados dois arquivos em `desktop/artifacts/electron-builder-release/`: o executável portátil (`ScreenShare-<versão>-portable.exe`) e o instalador (`ScreenShare-Setup-<versão>.exe`).
 
 ## Gerar para distribuir no Linux
 
