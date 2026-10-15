@@ -56,6 +56,7 @@ export type ParticipantCardProps = {
 	self: boolean;
 	compact?: boolean;
 	fill?: boolean;
+	loading?: boolean;
 	onWatch?: () => void;
 };
 

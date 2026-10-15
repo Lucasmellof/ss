@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { EyeOff, Pin,Volume1, Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { roomDebug, roomDebugError } from "@/lib/room/debug";
+import { StreamLoading } from "./StreamLoading";
 import type { VideoTileProps } from "./types";
 
 export function VideoTile({ tile, large, pinned, onPin, onHide }: VideoTileProps) {
@@ -9,6 +10,7 @@ export function VideoTile({ tile, large, pinned, onPin, onHide }: VideoTileProps
 	const [audioBlocked, setAudioBlocked] = useState(false);
 	const [muted, setMuted] = useState(true);
 	const [volume, setVolume] = useState(1);
+	const [ready, setReady] = useState(false);
 
 	useEffect(() => {
 		const video = ref.current;
@@ -24,6 +26,12 @@ export function VideoTile({ tile, large, pinned, onPin, onHide }: VideoTileProps
 				currentTime: video.currentTime,
 				errorCode: video.error?.code,
 			});
+		const markReady = () => {
+			if (video.videoWidth > 0 && video.readyState >= 2) setReady(true);
+		};
+		const readyEvents = ["loadeddata", "playing", "resize", "timeupdate"];
+		readyEvents.forEach((eventName) => video.addEventListener(eventName, markReady));
+		setReady(false);
 		const videoEvents = ["loadedmetadata", "loadeddata", "canplay", "playing", "waiting", "stalled", "resize", "error"];
 		videoEvents.forEach((eventName) => video.addEventListener(eventName, logVideoEvent));
 		const videoTrack = tile.stream.getVideoTracks()[0];
@@ -60,6 +68,7 @@ export function VideoTile({ tile, large, pinned, onPin, onHide }: VideoTileProps
 			if (!tile.local) setAudioBlocked(true);
 		});
 		return () => {
+			readyEvents.forEach((eventName) => video.removeEventListener(eventName, markReady));
 			videoEvents.forEach((eventName) => video.removeEventListener(eventName, logVideoEvent));
 			videoTrack?.removeEventListener("mute", logTrackEvent);
 			videoTrack?.removeEventListener("unmute", logTrackEvent);
@@ -106,13 +115,23 @@ export function VideoTile({ tile, large, pinned, onPin, onHide }: VideoTileProps
 			onClick={() => onPin(tile.id)}
 		>
 			<video
-				className={cn("block size-full bg-[#17191c] object-contain", large ? "aspect-auto" : "aspect-video")}
+				className={cn("block size-full bg-[#17191c] object-contain", large ? "aspect-auto" : "aspect-video", !ready && "invisible")}
 				ref={ref}
 				autoPlay
 				muted={tile.local || muted}
 				playsInline
 			/>
-			<div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-gradient-to-t from-black/80 via-black/30 to-transparent px-3 pb-2.5 pt-7 text-[11px] font-bold text-white">
+			{!ready && (
+				<>
+					<div className="absolute inset-0 grid place-items-center bg-[#202326]">
+						<div className="grid aspect-square w-[clamp(58px,9vw,112px)] place-items-center rounded-full border-[3px] border-white/20 bg-black/35 text-[clamp(22px,4vw,44px)] font-extrabold text-[#f5f7f8]">
+							{tile.name.slice(0, 1).toUpperCase()}
+						</div>
+					</div>
+					<StreamLoading name={tile.name} />
+				</>
+			)}
+			<div className="absolute inset-x-0 bottom-0 z-[5] flex items-center justify-between gap-2 bg-gradient-to-t from-black/80 via-black/30 to-transparent px-3 pb-2.5 pt-7 text-[11px] font-bold text-white">
 				<span>{tile.name}</span>
 				<div className="flex items-center gap-1.5">
 					{!tile.local && (muted || audioBlocked) && (

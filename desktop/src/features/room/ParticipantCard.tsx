@@ -1,10 +1,11 @@
 import { Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { StreamLoading } from "./StreamLoading";
 import type { ParticipantCardProps } from "./types";
 
 const participantColors = ["bg-[#202326]", "bg-[#4c302a]", "bg-[#423625]", "bg-[#163d29]", "bg-[#302a3d]", "bg-[#3d2e22]", "bg-[#263d43]"];
 
-export function ParticipantCard({ member, self, compact = false, fill = false, onWatch }: ParticipantCardProps) {
+export function ParticipantCard({ member, self, compact = false, fill = false, loading = false, onWatch }: ParticipantCardProps) {
 	let hash = 0;
 	for (const character of member.id) hash = (hash * 31 + character.charCodeAt(0)) | 0;
 	const color = participantColors[Math.abs(hash) % participantColors.length];
@@ -42,9 +43,10 @@ export function ParticipantCard({ member, self, compact = false, fill = false, o
 				<span
 					className={cn("inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-[#bac4ca]", compact && "hidden")}
 				>
-					<span className="size-1.5 rounded-full bg-app-accent" /> {onWatch ? "transmitindo" : "conectado"}
+					<span className="size-1.5 rounded-full bg-app-accent" /> {onWatch || loading ? "transmitindo" : "conectado"}
 				</span>
 			</div>
+			{loading && <StreamLoading name={member.name} compact={compact} />}
 			{onWatch && (
 				<div className="absolute inset-0 z-[3] grid place-items-center bg-black/45 transition-colors hover:bg-black/30">
 					<span className="inline-flex items-center gap-2 rounded-[10px] border border-white/25 bg-black/70 px-4 py-2.5 text-[clamp(12px,1.6vw,18px)] font-black tracking-wide text-white shadow-[0_8px_28px_rgba(0,0,0,.45)]">

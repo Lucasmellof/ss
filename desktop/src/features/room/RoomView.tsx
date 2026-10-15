@@ -80,8 +80,18 @@ export function RoomView({
 	const hiddenOwnerIDs = hiddenTiles
 		.map((tile) => tile.ownerId)
 		.filter((id): id is string => Boolean(id) && !tiles.some((tile) => tile.ownerId === id));
+	const isSelfSharing = (member: { name: string }) => sharing && member.name === selfName;
+	// Quem transmite mas ainda não tem tela carregada continua visível, com um overlay de carregamento.
+	const loadingMemberIDs = streamingMembers.filter(
+		(id) =>
+			!tiles.some((tile) => tile.ownerId === id) &&
+			!hiddenOwnerIDs.includes(id) &&
+			members.some((member) => member.id === id && !isSelfSharing(member)),
+	);
 	const visibleMembers = members.filter(
-		(member) => (!streamingMembers.includes(member.id) || hiddenOwnerIDs.includes(member.id)) && !(sharing && member.name === selfName),
+		(member) =>
+			(!streamingMembers.includes(member.id) || hiddenOwnerIDs.includes(member.id) || loadingMemberIDs.includes(member.id)) &&
+			!isSelfSharing(member),
 	);
 	const watchHandler = (memberID: string) =>
 		hiddenOwnerIDs.includes(memberID)
@@ -331,7 +341,13 @@ export function RoomView({
 							<VideoTile tile={featured} large pinned={pinned === featured.id} onPin={onPin} onHide={onHideTile} />
 						) : visibleMembers.length === 1 && tiles.length === 0 ? (
 							<div className="flex h-full min-h-0 w-full items-center justify-center">
-								<ParticipantCard member={visibleMembers[0]} self={visibleMembers[0].name === selfName} fill onWatch={watchHandler(visibleMembers[0].id)} />
+								<ParticipantCard
+										member={visibleMembers[0]}
+										self={visibleMembers[0].name === selfName}
+										fill
+										loading={loadingMemberIDs.includes(visibleMembers[0].id)}
+										onWatch={watchHandler(visibleMembers[0].id)}
+									/>
 							</div>
 						) : cardCount > 0 ? (
 							<div className={cn("grid h-full min-h-0 w-full content-center gap-2.5 p-0", gridColumnClasses[gridColumns])}>
@@ -341,6 +357,7 @@ export function RoomView({
 										member={member}
 										self={member.name === selfName}
 										fill={cardCount === 1}
+							loading={loadingMemberIDs.includes(member.id)}
 										onWatch={watchHandler(member.id)}
 									/>
 								))}
