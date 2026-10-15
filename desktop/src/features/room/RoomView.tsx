@@ -25,13 +25,6 @@ import { StageMiniMap } from "./StageMiniMap";
 import { VideoTile } from "./VideoTile";
 import type { RoomViewProps, StageLayout, StagePan } from "./types";
 
-const gridColumnClasses = {
-	1: "grid-cols-1",
-	2: "grid-cols-2",
-	3: "grid-cols-3",
-	4: "grid-cols-4",
-} as const;
-
 const clampZoom = (value: number) => Math.max(1, Math.min(2, Number(value.toFixed(3))));
 const clampPan = (pan: StagePan, zoom: number): StagePan => {
 	const limit = Math.max(0, (zoom - 1) * 50);
@@ -99,7 +92,13 @@ export function RoomView({
 			: undefined;
 	const cardCount = visibleMembers.length + tiles.length;
 	const effectiveLayout: StageLayout = tiles.length === 0 ? "grid" : layoutManual ? stageLayout : tiles.length === 1 ? "focus" : "grid";
-	const gridColumns = cardCount <= 1 ? 1 : cardCount <= 6 ? 2 : cardCount <= 9 ? 3 : 4;
+	const gridColumns = cardCount <= 1 ? 1 : cardCount <= 6 ? 2 : cardCount <= 9 ? 3 : Math.min(8, Math.ceil(Math.sqrt(cardCount * 1.78)));
+	const gridRows = Math.max(1, Math.ceil(cardCount / gridColumns));
+	// Células com tamanho definido: com muitos cards eles encolhem juntos em vez de se sobreporem.
+	const gridStyle: CSSProperties = {
+		gridTemplateColumns: `repeat(${gridColumns}, minmax(0, 1fr))`,
+		gridTemplateRows: `repeat(${gridRows}, minmax(0, 1fr))`,
+	};
 	const showLayoutControls = tiles.length > 1;
 	const showZoomReset = stageZoom > 1;
 	const stageStyle = { transform: `translate(${stagePan.x}%, ${stagePan.y}%) scale(${stageZoom})` } as CSSProperties;
@@ -350,7 +349,7 @@ export function RoomView({
 									/>
 							</div>
 						) : cardCount > 0 ? (
-							<div className={cn("grid h-full min-h-0 w-full content-center gap-2.5 p-0", gridColumnClasses[gridColumns])}>
+							<div className="grid h-full min-h-0 w-full gap-2.5 p-0" style={gridStyle}>
 								{visibleMembers.map((member) => (
 									<ParticipantCard
 										key={`member-${member.id}`}

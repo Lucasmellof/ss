@@ -12,7 +12,7 @@ export function ParticipantCard({ member, self, compact = false, fill = false, l
 	return (
 		<article
 			className={cn(
-				"relative grid aspect-video min-h-0 place-items-center overflow-hidden rounded-lg",
+				"relative m-auto grid aspect-video max-h-full min-h-0 w-full place-items-center self-center overflow-hidden rounded-lg [container-type:size]",
 				color,
 				compact && "h-auto",
 				fill && "h-full w-full aspect-auto",
@@ -24,7 +24,7 @@ export function ParticipantCard({ member, self, compact = false, fill = false, l
 			<div className="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-black/20" />
 			<div
 				className={cn(
-					"relative z-[1] grid aspect-square w-[clamp(58px,9vw,112px)] place-items-center rounded-full border-[3px] border-white/20 bg-black/35 text-[clamp(22px,4vw,44px)] font-extrabold text-[#f5f7f8] shadow-[0_8px_28px_rgba(0,0,0,.25)]",
+					"relative z-[1] -mt-[6cqh] grid aspect-square w-[min(clamp(58px,9vw,112px),36cqh)] place-items-center rounded-full border-[3px] border-white/20 bg-black/35 text-[min(clamp(22px,4vw,44px),14cqh)] font-extrabold text-[#f5f7f8] shadow-[0_8px_28px_rgba(0,0,0,.25)] [@container(max-height:120px)]:border-2",
 					compact && "w-[38px] text-base",
 				)}
 			>
@@ -32,7 +32,7 @@ export function ParticipantCard({ member, self, compact = false, fill = false, l
 			</div>
 			<div
 				className={cn(
-					"absolute inset-x-3 bottom-2.5 z-[2] flex items-center justify-between gap-2 rounded-[7px] bg-black/60 px-2.5 py-2 text-xs font-extrabold text-[#f4f6f7]",
+					"absolute inset-x-3 bottom-2.5 z-[2] flex items-center justify-between gap-2 rounded-[7px] bg-black/60 px-2.5 py-2 text-xs font-extrabold text-[#f4f6f7] [@container(max-height:150px)]:inset-x-1.5 [@container(max-height:150px)]:bottom-1.5 [@container(max-height:150px)]:px-2 [@container(max-height:150px)]:py-1 [@container(max-height:150px)]:text-[10px]",
 					compact && "inset-x-1.5 bottom-1.5 px-2 py-1.5 text-[10px]",
 				)}
 			>
@@ -41,7 +41,7 @@ export function ParticipantCard({ member, self, compact = false, fill = false, l
 					{self ? " · você" : ""}
 				</span>
 				<span
-					className={cn("inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-[#bac4ca]", compact && "hidden")}
+					className={cn("inline-flex shrink-0 items-center gap-1 text-[10px] font-semibold text-[#bac4ca] [@container(max-height:150px)]:hidden", compact && "hidden")}
 				>
 					<span className="size-1.5 rounded-full bg-app-accent" /> {onWatch || loading ? "transmitindo" : "conectado"}
 				</span>
