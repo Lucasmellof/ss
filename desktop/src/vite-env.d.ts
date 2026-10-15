@@ -27,6 +27,8 @@ declare global {
 			checkForUpdate(): Promise<UpdateCheckResult>;
 			downloadUpdate(): Promise<string>;
 			onUpdateProgress(callback: (progress: { received: number; total: number }) => void): () => void;
+			takePendingRoom(): Promise<string | null>;
+			onOpenRoom(callback: (room: string) => void): () => void;
 			onAudioChunk(callback: (buffer: Uint8Array) => void): () => void;
 		};
 	}

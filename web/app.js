@@ -38,6 +38,7 @@
 
   roomInput.value = state.room;
   applyMode();
+  if (params.get("room") && state.mode === "watch") offerDesktopApp(state.room);
 
   document.querySelectorAll(".mode-button").forEach((button) => {
     button.addEventListener("click", () => {
@@ -105,6 +106,17 @@
       window.prompt("Copie este link:", url.toString());
     }
   });
+
+  // Links de sala tentam abrir o aplicativo desktop antes de seguir no navegador.
+  function offerDesktopApp(room) {
+    if (!/^[a-zA-Z0-9_-]{8,64}$/.test(room) || /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) return;
+    const handoff = $("#app-handoff");
+    const appLink = `screen-share-room://join?room=${encodeURIComponent(room)}`;
+    $("#app-handoff-open").addEventListener("click", () => { window.location.href = appLink; });
+    $("#app-handoff-dismiss").addEventListener("click", () => handoff.classList.add("hidden"));
+    handoff.classList.remove("hidden");
+    window.location.href = appLink;
+  }
 
   function applyMode() {
     document.querySelectorAll(".mode-button").forEach((button) => {

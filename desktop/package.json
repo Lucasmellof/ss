@@ -58,6 +58,14 @@
 		"appId": "dev.lucas.screen-share",
 		"productName": "Screen Share",
 		"asar": true,
+		"protocols": [
+			{
+				"name": "Screen Share Room",
+				"schemes": [
+					"screen-share-room"
+				]
+			}
+		],
 		"publish": [
 			{
 				"provider": "github",

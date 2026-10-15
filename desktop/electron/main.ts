@@ -11,6 +11,55 @@ const clientRoot = path.resolve(root, "../dist/client");
 
 protocol.registerSchemesAsPrivileged([{ scheme: "screen-share", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
+const ROOM_PROTOCOL = "screen-share-room";
+const ROOM_PATTERN = /^[a-zA-Z0-9_-]{8,64}$/;
+
+const isPrimaryInstance = app.requestSingleInstanceLock();
+if (!isPrimaryInstance) app.quit();
+
+if (app.isPackaged) {
+	const portableExe = process.env.PORTABLE_EXECUTABLE_FILE;
+	if (portableExe) app.setAsDefaultProtocolClient(ROOM_PROTOCOL, portableExe, []);
+	else app.setAsDefaultProtocolClient(ROOM_PROTOCOL);
+}
+
+let mainWindow: BrowserWindow | null = null;
+let pendingRoom = roomFromArgs(process.argv);
+
+function roomFromLink(link: string): string | undefined {
+	try {
+		const url = new URL(link);
+		if (url.protocol !== `${ROOM_PROTOCOL}:`) return undefined;
+		const room = url.searchParams.get("room")?.trim() ?? "";
+		return ROOM_PATTERN.test(room) ? room : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function roomFromArgs(args: string[]): string | undefined {
+	const link = args.find((arg) => arg.startsWith(`${ROOM_PROTOCOL}:`));
+	return link ? roomFromLink(link) : undefined;
+}
+
+function openRoom(room: string | undefined) {
+	if (!room) return;
+	const window = mainWindow;
+	if (!window || window.isDestroyed() || window.webContents.isLoading()) {
+		pendingRoom = room;
+		return;
+	}
+	if (window.isMinimized()) window.restore();
+	window.focus();
+	window.webContents.send("room:open", room);
+}
+
+app.on("second-instance", (_event, args) => openRoom(roomFromArgs(args)));
+app.on("open-url", (event, link) => {
+	event.preventDefault();
+	openRoom(roomFromLink(link));
+});
+
 if (process.platform === "linux") {
 	app.commandLine.appendSwitch("enable-features", "WebRTCPipeWireCapturer");
 }
@@ -166,7 +215,7 @@ async function sources() {
 }
 
 function createWindow() {
-	const window = new BrowserWindow({
+	const window = (mainWindow = new BrowserWindow({
 		width: 1240,
 		height: 840,
 		minWidth: 900,
@@ -174,13 +223,14 @@ function createWindow() {
 		backgroundColor: "#09090b",
 		icon: path.resolve(root, "../resources/icon.png"),
 		webPreferences: { preload: path.join(root, "preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: false },
-	});
+	}));
 	const devURL = process.env.VITE_DEV_SERVER_URL;
 	if (devURL) void window.loadURL(devURL);
 	else void window.loadURL("screen-share://app/");
 }
 
 app.whenReady().then(() => {
+	if (!isPrimaryInstance) return undefined;
 	protocol.handle("screen-share", (request) => {
 		const requestedPath = decodeURIComponent(new URL(request.url).pathname);
 		const assetPath = requestedPath === "/" ? "/_shell.html" : requestedPath;
@@ -198,8 +248,6 @@ app.whenReady().then(() => {
 	});
 
 	if (process.platform === "linux") {
-		// The Electron display-media API uses this callback as its async bridge to PipeWire.
-		// oxlint-disable promise/no-callback-in-promise
 		session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
 			const selected = captureSources.find((source) => source.id === selectedCaptureSourceID);
 			const source = selected ?? captureSources[0];
@@ -217,7 +265,6 @@ app.whenReady().then(() => {
 				callback({});
 			}
 		});
-		// oxlint-enable promise/no-callback-in-promise
 	}
 
 	ipcMain.handle("capture:sources", sources);
@@ -227,6 +274,11 @@ app.whenReady().then(() => {
 	});
 	registerUpdater();
 	ipcMain.handle("system:hostname", () => os.hostname());
+	ipcMain.handle("room:take-pending", () => {
+		const room = pendingRoom;
+		pendingRoom = undefined;
+		return room ?? null;
+	});
 	ipcMain.handle("capture:start-audio-loopback", (_event, sourceId: string) => {
 		const win = BrowserWindow.fromWebContents(_event.sender);
 		if (!win) return false;

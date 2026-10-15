@@ -16,6 +16,14 @@ contextBridge.exposeInMainWorld("screenShare", {
 			ipcRenderer.removeListener("update:progress", handler);
 		};
 	},
+	takePendingRoom: () => ipcRenderer.invoke("room:take-pending"),
+	onOpenRoom: (callback: (room: string) => void) => {
+		const handler = (_event: Electron.IpcRendererEvent, room: string) => callback(room);
+		ipcRenderer.on("room:open", handler);
+		return () => {
+			ipcRenderer.removeListener("room:open", handler);
+		};
+	},
 	onAudioChunk: (callback: (buffer: Uint8Array) => void) => {
 		const handler = (_event: Electron.IpcRendererEvent, chunk: Uint8Array) => callback(chunk);
 		ipcRenderer.on("capture:audio-chunk", handler);

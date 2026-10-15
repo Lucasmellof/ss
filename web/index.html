@@ -21,6 +21,14 @@
       </header>
 
       <section class="card setup-card" id="setup-card">
+        <div class="handoff hidden" id="app-handoff">
+          <p>Tentando abrir a sala no aplicativo. Se nada aconteceu, abra manualmente ou continue no navegador.</p>
+          <div class="handoff-actions">
+            <button class="primary-button" id="app-handoff-open" type="button">Abrir no aplicativo</button>
+            <button class="secondary-button" id="app-handoff-dismiss" type="button">Continuar no navegador</button>
+          </div>
+        </div>
+
         <div class="mode-switch" role="tablist" aria-label="Modo">
           <button class="mode-button active" data-mode="broadcast" type="button">Transmitir</button>
           <button class="mode-button" data-mode="watch" type="button">Assistir</button>

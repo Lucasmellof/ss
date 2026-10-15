@@ -34,6 +34,7 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 	const wasJoined = useRef(false);
 	const reconnecting = useRef(false);
 	const onStopSharingRef = useRef<StopSharing | undefined>(onStopSharing);
+	const openLinkedRoomRef = useRef<(linkedRoom: string) => void>(() => {});
 
 	useEffect(() => {
 		setRoom(linkedRoom() || storedValue("screen-share.room"));
@@ -126,9 +127,12 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 
 	const join = async (event?: FormEvent) => {
 		event?.preventDefault();
+		await enterRoom(room.trim(), name.trim() || "Participante");
+	};
+
+	const enterRoom = async (nextRoom: string, displayName: string) => {
 		if (joiningRef.current) return;
 
-		const nextRoom = room.trim();
 		if (!/^[a-zA-Z0-9_-]{8,64}$/.test(nextRoom)) {
 			setStatus("A sala deve ter de 8 a 64 caracteres: letras, números, hífen ou sublinhado");
 			return;
@@ -142,7 +146,6 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 		setStreamingMembers([]);
 		setStreamOwners([]);
 
-		const displayName = name.trim() || "Participante";
 		const nextClient = createClient(token, nextRoom, displayName);
 		client.current = nextClient;
 
@@ -187,6 +190,29 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 		setJoined(false);
 		setStatus("Você saiu da sala");
 	};
+
+	useEffect(() => {
+		openLinkedRoomRef.current = (linkedRoom) => {
+			if (wasJoined.current && room === linkedRoom) return;
+			setRoom(linkedRoom);
+			const displayName = name.trim() || storedValue("screen-share.name");
+			if (!displayName) {
+				setStatus("Digite seu nome para entrar na sala do link");
+				return;
+			}
+			if (wasJoined.current) leave();
+			void enterRoom(linkedRoom, displayName);
+		};
+	});
+
+	useEffect(() => {
+		const desktop = window.screenShare;
+		if (!desktop) return undefined;
+		void desktop.takePendingRoom().then((linkedRoom) => {
+			if (linkedRoom) openLinkedRoomRef.current(linkedRoom);
+		});
+		return desktop.onOpenRoom((linkedRoom) => openLinkedRoomRef.current(linkedRoom));
+	}, []);
 
 	useEffect(
 		() => () => {
