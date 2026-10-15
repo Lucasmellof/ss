@@ -67,6 +67,8 @@ export function RoomPage() {
 					frameRate={capture.frameRate}
 					resolution={capture.resolution}
 					audioMode={capture.audioMode}
+					includeDiscordAudio={capture.includeDiscordAudio}
+					nativePicker={window.screenShare.platform === "linux"}
 					loading={capture.loadingSources}
 					starting={capture.startingShare}
 					onType={capture.selectSourceType}
@@ -74,6 +76,7 @@ export function RoomPage() {
 					onFrameRate={capture.setFrameRate}
 					onResolution={capture.setResolution}
 					onAudioMode={capture.setAudioMode}
+					onIncludeDiscordAudio={capture.setIncludeDiscordAudio}
 					onRefresh={() => void capture.loadSources()}
 					onClose={capture.closePicker}
 					onStart={() => void capture.startSharing()}

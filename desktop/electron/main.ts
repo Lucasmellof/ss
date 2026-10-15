@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol } from "electron";
+import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session } from "electron";
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -10,9 +10,17 @@ const clientRoot = path.resolve(root, "../dist/client");
 
 protocol.registerSchemesAsPrivileged([{ scheme: "screen-share", privileges: { standard: true, secure: true, supportFetchAPI: true } }]);
 
-let activeAudioProcess: ChildProcessWithoutNullStreams | null = null;
+if (process.platform === "linux") {
+	app.commandLine.appendSwitch("enable-features", "WebRTCPipeWireCapturer");
+}
 
-function getAudioLoopbackPath(): string {
+let activeAudioProcess: ChildProcessWithoutNullStreams | null = null;
+let captureSources: Electron.DesktopCapturerSource[] = [];
+let selectedCaptureSourceID: string | undefined;
+
+function getAudioLoopbackPath(): string | undefined {
+	if (process.platform !== "win32") return undefined;
+
 	const possiblePaths = [
 		path.join(process.resourcesPath, "tools/audio-loopback/AudioLoopback.exe"),
 		path.resolve(root, "../build/audio-loopback/AudioLoopback.exe"),
@@ -39,15 +47,20 @@ function stopAudioProcess() {
 
 async function startAudioLoopback(window: BrowserWindow, sourceId: string): Promise<boolean> {
 	stopAudioProcess();
+	if (process.platform !== "win32") {
+		console.info("[AudioLoopback] helper WASAPI indisponível nesta plataforma; usando a captura do Chromium");
+		return false;
+	}
+
 	const isWindow = sourceId.startsWith("window:");
 	const isScreen = sourceId.startsWith("screen:");
 	console.log("[AudioLoopback] startAudioLoopback chamado:", { sourceId, isWindow, isScreen });
 	if (!isWindow && !isScreen) return false;
 
-	const exePath = getAudioLoopbackPath();
-	console.log("[AudioLoopback] exePath:", exePath, "exists:", fs.existsSync(exePath));
-	if (!fs.existsSync(exePath)) {
-		console.error("AudioLoopback.exe não encontrado em:", exePath);
+	const helperPath = getAudioLoopbackPath();
+	console.log("[AudioLoopback] helperPath:", helperPath, "exists:", helperPath ? fs.existsSync(helperPath) : false);
+	if (!helperPath || !fs.existsSync(helperPath)) {
+		console.error("AudioLoopback.exe não encontrado em:", helperPath ?? "caminho não configurado");
 		return false;
 	}
 
@@ -64,7 +77,7 @@ async function startAudioLoopback(window: BrowserWindow, sourceId: string): Prom
 
 	console.log("[AudioLoopback] Iniciando processo com args:", args);
 	try {
-		const proc = spawn(exePath, args);
+		const proc = spawn(helperPath, args);
 		activeAudioProcess = proc;
 		let startupResolved = false;
 		let resolveStartup!: (started: boolean) => void;
@@ -125,13 +138,19 @@ async function startAudioLoopback(window: BrowserWindow, sourceId: string): Prom
 	}
 }
 
+async function getDesktopCapturerSources() {
+	const items = await desktopCapturer.getSources({
+		types: ["screen", "window"],
+		thumbnailSize: { width: 480, height: 270 },
+		fetchWindowIcons: true,
+	});
+	captureSources = items;
+	return items;
+}
+
 async function sources() {
 	try {
-		const items = await desktopCapturer.getSources({
-			types: ["screen", "window"],
-			thumbnailSize: { width: 480, height: 270 },
-			fetchWindowIcons: true,
-		});
+		const items = await getDesktopCapturerSources();
 		return items.map((item) => ({
 			id: item.id,
 			name: item.name,
@@ -170,7 +189,34 @@ app.whenReady().then(() => {
 		return net.fetch(pathToFileURL(filePath).toString());
 	});
 
+	if (process.platform === "linux") {
+		// The Electron display-media API uses this callback as its async bridge to PipeWire.
+		// oxlint-disable promise/no-callback-in-promise
+		session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+			const selected = captureSources.find((source) => source.id === selectedCaptureSourceID);
+			const source = selected ?? captureSources[0];
+			if (source) {
+				callback({ video: source });
+				return;
+			}
+
+			try {
+				const items = await getDesktopCapturerSources();
+				const fallback = items.find((item) => item.id === selectedCaptureSourceID) ?? items[0];
+				callback(fallback ? { video: fallback } : {});
+			} catch (error) {
+				console.error("Não foi possível autorizar a captura PipeWire:", error);
+				callback({});
+			}
+		});
+		// oxlint-enable promise/no-callback-in-promise
+	}
+
 	ipcMain.handle("capture:sources", sources);
+	ipcMain.handle("capture:set-source", (_event, sourceId: string) => {
+		selectedCaptureSourceID = sourceId;
+		return true;
+	});
 	ipcMain.handle("system:hostname", () => os.hostname());
 	ipcMain.handle("capture:start-audio-loopback", (_event, sourceId: string) => {
 		const win = BrowserWindow.fromWebContents(_event.sender);

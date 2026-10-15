@@ -80,6 +80,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	const [frameRate, setFrameRate] = useState<FrameRate>(30);
 	const [resolution, setResolution] = useState<Resolution>("1080p");
 	const [audioMode, setAudioMode] = useState<AudioMode>("none");
+	const [includeDiscordAudio, setIncludeDiscordAudio] = useState(false);
 	const [loadingSources, setLoadingSources] = useState(false);
 	const [startingShare, setStartingShare] = useState(false);
 	const localStream = useRef<MediaStream | null>(null);
@@ -93,6 +94,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	const frameRateRef = useRef(frameRate);
 	const resolutionRef = useRef(resolution);
 	const audioModeRef = useRef(audioMode);
+	const includeDiscordAudioRef = useRef(includeDiscordAudio);
 	const audioContextRef = useRef<AudioContext | null>(null);
 	const audioCleanupRef = useRef<(() => void) | null>(null);
 
@@ -105,7 +107,8 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		frameRateRef.current = frameRate;
 		resolutionRef.current = resolution;
 		audioModeRef.current = audioMode;
-	}, [server, room, onStatus, sources, selectedSourceID, frameRate, resolution, audioMode]);
+		includeDiscordAudioRef.current = includeDiscordAudio;
+	}, [server, room, onStatus, sources, selectedSourceID, frameRate, resolution, audioMode, includeDiscordAudio]);
 
 	const cleanupAudio = () => {
 		if (audioCleanupRef.current) {
@@ -168,7 +171,8 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	const startSharing = async () => {
 		const source = sourcesRef.current.find((item) => item.id === selectedSourceIDRef.current);
 		const roomClient = client.current;
-		if (!source || !roomClient) {
+		const isLinux = window.screenShare.platform === "linux";
+		if ((!source && !isLinux) || !roomClient) {
 			onStatusRef.current("Selecione uma tela ou janela para compartilhar");
 			return;
 		}
@@ -177,23 +181,26 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		const frameRateValue = frameRateRef.current;
 		const resolutionValue = resolutionRef.current;
 		const audioModeValue = audioModeRef.current;
+		const includeDiscordAudioValue = includeDiscordAudioRef.current;
 		const maxBitrate = videoBitrate(resolutionValue, frameRateValue);
 		const token = ++captureToken.current;
 		roomDebug("capture start", {
-			sourceID: source.id,
-			sourceType: source.kind,
+			sourceID: source?.id ?? "linux:native-picker",
+			sourceType: source?.kind ?? "screen",
 			room: roomValue,
 			frameRate: frameRateValue,
 			resolution: resolutionValue,
 			audioMode: audioModeValue,
+			includeDiscordAudio: includeDiscordAudioValue,
 		});
 		setStartingShare(true);
 		cleanupAudio();
 		let stream: MediaStream | undefined;
 		try {
-			const isWindow = source.kind === "window";
-			const audioSource = isWindow ? source : (sourcesRef.current.find((item) => item.kind === "screen") ?? source);
-			if (audioModeValue === "system" && !audioSource) {
+			if (source) await window.screenShare.setCaptureSource(source.id);
+			const isWindow = source?.kind === "window";
+			const audioSource = source && (isWindow ? source : (sourcesRef.current.find((item) => item.kind === "screen") ?? source));
+			if (audioModeValue === "system" && !isLinux && !audioSource) {
 				throw new Error(
 					isWindow
 						? "Não foi possível encontrar a janela para capturar o áudio do aplicativo"
@@ -201,29 +208,81 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 				);
 			}
 			const selectedResolution = resolutions[resolutionValue];
-			const desktopVideo = {
-				mandatory: {
-					chromeMediaSource: "desktop",
-					chromeMediaSourceId: source.id,
-					maxFrameRate: frameRateValue,
-					...(selectedResolution.width && selectedResolution.height
-						? {
-								maxWidth: selectedResolution.width,
-								maxHeight: selectedResolution.height,
-							}
-						: {}),
-				},
-			} as unknown as MediaTrackConstraints;
-
 			const capturesAudio = audioModeValue === "system";
-			const desktopAudio = {
-				mandatory: {
-					chromeMediaSource: "desktop",
-					chromeMediaSourceId: audioSource.id,
-				},
-			} as unknown as MediaTrackConstraints;
+			const desktopVideo = source
+				? ({
+						mandatory: {
+							chromeMediaSource: "desktop",
+							chromeMediaSourceId: source.id,
+							maxFrameRate: frameRateValue,
+							...(selectedResolution.width && selectedResolution.height
+								? {
+										maxWidth: selectedResolution.width,
+										maxHeight: selectedResolution.height,
+									}
+								: {}),
+						},
+					} as unknown as MediaTrackConstraints)
+				: undefined;
+			const desktopAudio = audioSource
+				? ({
+						mandatory: {
+							chromeMediaSource: "desktop",
+							chromeMediaSourceId: audioSource.id,
+						},
+					} as unknown as MediaTrackConstraints)
+				: undefined;
+			const displayVideo: MediaTrackConstraints = {
+				frameRate: { ideal: frameRateValue, max: frameRateValue },
+				...(selectedResolution.width && selectedResolution.height
+					? {
+							width: { ideal: selectedResolution.width, max: selectedResolution.width },
+							height: { ideal: selectedResolution.height, max: selectedResolution.height },
+						}
+					: {}),
+			};
+			if (capturesAudio && !desktopAudio && !isLinux) {
+				throw new Error("Não foi possível encontrar a fonte de áudio da tela");
+			}
+			const legacyAudio = capturesAudio ? (desktopAudio ?? false) : false;
+			const captureLegacyDesktop = async () => {
+				if (!desktopVideo) throw new Error("Não foi possível identificar a fonte de captura da tela");
+				return navigator.mediaDevices.getUserMedia({ audio: legacyAudio, video: desktopVideo });
+			};
+			const captureLinuxDesktop = async () => {
+				try {
+					return await captureLegacyDesktop();
+				} catch (legacyError) {
+					roomDebugError("legacy Linux desktop capture failed; trying PipeWire display capture", legacyError);
+					if (typeof navigator.mediaDevices.getDisplayMedia !== "function") throw legacyError;
 
-			if (capturesAudio && window.screenShare?.startAudioLoopback && window.screenShare?.onAudioChunk) {
+					const videoStream = await navigator.mediaDevices.getDisplayMedia({ video: displayVideo, audio: false });
+					if (!capturesAudio) return videoStream;
+					if (!desktopAudio) {
+						stopTracks(videoStream);
+						throw new Error("Não foi possível identificar a fonte de áudio do desktop no Linux", { cause: legacyError });
+					}
+
+					try {
+						const audioStream = await navigator.mediaDevices.getUserMedia({ audio: desktopAudio, video: false });
+						return new MediaStream([...videoStream.getVideoTracks(), ...audioStream.getAudioTracks()]);
+					} catch (audioError) {
+						stopTracks(videoStream);
+						throw audioError;
+					}
+				}
+			};
+
+			if (
+				!isLinux &&
+				source &&
+				capturesAudio &&
+				(!includeDiscordAudioValue || isWindow) &&
+				desktopVideo &&
+				desktopAudio &&
+				window.screenShare?.startAudioLoopback &&
+				window.screenShare?.onAudioChunk
+			) {
 				const videoStream = await navigator.mediaDevices.getUserMedia({
 					audio: false,
 					video: desktopVideo,
@@ -320,11 +379,10 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 
 					stream = new MediaStream([videoTrack, ...(audioTrack ? [audioTrack] : [])]);
 				}
+			} else if (isLinux) {
+				stream = await captureLinuxDesktop();
 			} else {
-				stream = await navigator.mediaDevices.getUserMedia({
-					audio: capturesAudio ? desktopAudio : false,
-					video: desktopVideo,
-				});
+				stream = await captureLegacyDesktop();
 			}
 			if (capturesAudio && stream.getAudioTracks().length === 0) {
 				throw new Error("A fonte não forneceu uma faixa de áudio");
@@ -422,6 +480,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		frameRate,
 		resolution,
 		audioMode,
+		includeDiscordAudio,
 		loadingSources,
 		startingShare,
 		setPickerOpen,
@@ -430,6 +489,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		setFrameRate,
 		setResolution,
 		setAudioMode,
+		setIncludeDiscordAudio,
 		loadSources,
 		selectSourceType,
 		selectSource,
