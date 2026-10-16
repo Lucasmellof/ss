@@ -224,7 +224,13 @@ function createWindow() {
 		title: "Screen Share",
 		backgroundColor: "#09090b",
 		icon: path.resolve(root, "../resources/icon.png"),
-		webPreferences: { preload: path.join(root, "preload.cjs"), contextIsolation: true, nodeIntegration: false, sandbox: false },
+		webPreferences: {
+			preload: path.join(root, "preload.cjs"),
+			contextIsolation: true,
+			nodeIntegration: false,
+			sandbox: false,
+			backgroundThrottling: false,
+		},
 	}));
 	window.webContents.setWindowOpenHandler(({ url }) => {
 		if (url.startsWith("https://")) void shell.openExternal(url);
