@@ -157,7 +157,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	const stopSharing = (message = "Compartilhamento encerrado") => {
 		roomDebug("capture stop", { message, hadStream: Boolean(localStream.current) });
 		captureToken.current += 1;
-		client.current?.stopPublish();
+		client.current?.stopPublish("screen");
 		cleanupAudio();
 		const stream = localStream.current;
 		localStream.current = null;
@@ -432,7 +432,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 				videoTrackID: videoTrack.id,
 				videoReadyState: videoTrack.readyState,
 			});
-			await roomClient.publish(serverValue.trim(), roomValue.trim(), stream, frameRateValue, maxBitrate);
+			await roomClient.publish("screen", serverValue.trim(), roomValue.trim(), stream, frameRateValue, maxBitrate);
 			roomDebug("capture publish ready", {
 				streamID: stream.id,
 				videoTrackID: videoTrack.id,
@@ -448,7 +448,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 				return;
 			}
 			cleanupAudio();
-			roomClient.stopPublish();
+			roomClient.stopPublish("screen");
 			stopTracks(stream);
 			if (localStream.current && localStream.current !== stream) stopTracks(localStream.current);
 			localStream.current = null;
@@ -463,7 +463,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 			captureToken.current += 1;
 			sourceRequest.current += 1;
 			cleanupAudio();
-			client.current?.stopPublish();
+			client.current?.stopPublish("screen");
 			const stream = localStream.current;
 			localStream.current = null;
 			stopTracks(stream);

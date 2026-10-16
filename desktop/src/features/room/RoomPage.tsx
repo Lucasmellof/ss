@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { CameraPicker } from "@/features/capture/CameraPicker";
 import { SourcePicker } from "@/features/capture/SourcePicker";
 import { buildRoomLink } from "@/lib/room-link";
 import { RoomView } from "./RoomView";
@@ -8,7 +9,7 @@ import { useRoomPing } from "./RoomPingProvider";
 
 export function RoomPage() {
 	const navigate = useNavigate();
-	const { session, capture, stage, sounds, tiles, hiddenTiles, hideTile, showTile, leave } = useRoomApp();
+	const { session, capture, camera, stage, sounds, tiles, hiddenTiles, hideTile, showTile, leave } = useRoomApp();
 	const ping = useRoomPing();
 	const [linkCopied, setLinkCopied] = useState(false);
 
@@ -35,6 +36,8 @@ export function RoomPage() {
 				pinned={stage.pinned}
 				sharing={capture.sharing}
 				startingShare={capture.startingShare}
+				cameraOn={camera.active}
+				startingCamera={camera.starting}
 				soundsEnabled={sounds.soundsEnabled}
 				stageLayout={stage.stageLayout}
 				layoutManual={stage.stageLayoutManual}
@@ -55,12 +58,23 @@ export function RoomPage() {
 				}}
 				onShare={() => void capture.loadSources()}
 				onStopShare={capture.stopSharing}
+				onCamera={() => void camera.openPicker()}
+				onStopCamera={() => camera.stopCamera()}
 				onToggleSounds={sounds.toggleSounds}
 				onLeave={() => {
 					leave();
 					void navigate({ to: "/", replace: true });
 				}}
 			/>
+
+			{camera.pickerOpen && (
+				<CameraPicker
+					devices={camera.devices}
+					lastDeviceId={camera.lastDeviceId}
+					onSelect={(deviceId) => void camera.startCamera(deviceId)}
+					onClose={camera.closePicker}
+				/>
+			)}
 
 			{capture.pickerOpen && (
 				<SourcePicker
