@@ -32,7 +32,10 @@ export type ViewerSession = {
 	rejectReady: (reason?: unknown) => void;
 };
 
+export type PublishKind = "screen" | "camera";
+
 export type PublisherSession = {
+	kind: PublishKind;
 	ws: WebSocket;
 	pc: RTCPeerConnection;
 	intentional: boolean;

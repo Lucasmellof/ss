@@ -1,2 +1,2 @@
 export { RoomClient } from "./room/client";
-export type { Member, RoomStream, StreamOwner } from "./room/types";
+export type { Member, PublishKind, RoomStream, StreamOwner } from "./room/types";

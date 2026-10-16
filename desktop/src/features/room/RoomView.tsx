@@ -16,6 +16,7 @@ import {
 	RefreshCw,
 	Scan,
 	Users,
+	Video,
 	Volume2,
 	VolumeX,
 } from "lucide-react";
@@ -49,6 +50,8 @@ export function RoomView({
 	pinned,
 	sharing,
 	startingShare,
+	cameraOn,
+	startingCamera,
 	soundsEnabled,
 	stageLayout,
 	layoutManual,
@@ -58,6 +61,8 @@ export function RoomView({
 	onCopyLink,
 	onShare,
 	onStopShare,
+	onCamera,
+	onStopCamera,
 	onLeave,
 	onToggleSounds,
 	onStageLayout,
@@ -73,7 +78,7 @@ export function RoomView({
 	const hiddenOwnerIDs = hiddenTiles
 		.map((tile) => tile.ownerId)
 		.filter((id): id is string => Boolean(id) && !tiles.some((tile) => tile.ownerId === id));
-	const isSelfSharing = (member: { name: string }) => sharing && member.name === selfName;
+	const isSelfSharing = (member: { name: string }) => (sharing || cameraOn) && member.name === selfName;
 	// Quem transmite mas ainda não tem tela carregada continua visível, com um overlay de carregamento.
 	const loadingMemberIDs = streamingMembers.filter(
 		(id) =>
@@ -414,6 +419,28 @@ export function RoomView({
 						>
 							<MonitorUp className="size-[17px]" />
 							<span className="max-sm:hidden">Compartilhar</span>
+						</button>
+					)}
+					{cameraOn ? (
+						<button
+							className="inline-flex h-[38px] min-w-[38px] items-center justify-center gap-1.5 rounded-[9px] border border-app-accent/35 bg-[#ED2939] px-2.5 text-[11px] font-extrabold text-app-text"
+							type="button"
+							onClick={() => onStopCamera()}
+							aria-label="Parar câmera"
+						>
+							{startingCamera ? <RefreshCw className="size-[17px] animate-spin" /> : <Video className="size-[17px]" />}
+							<span className="max-sm:hidden">{startingCamera ? "Conectando" : "Parar Câmera"}</span>
+						</button>
+					) : (
+						<button
+							className="inline-flex h-[38px] min-w-[38px] items-center justify-center gap-1.5 rounded-[9px] border border-[#282d33] bg-[#111317] px-2.5 text-[11px] font-extrabold text-[#bbc3ca] hover:border-[#47535c] hover:bg-[#20252b] disabled:opacity-60"
+							type="button"
+							onClick={onCamera}
+							disabled={startingCamera}
+							aria-label="Transmitir câmera"
+						>
+							{startingCamera ? <RefreshCw className="size-[17px] animate-spin" /> : <Video className="size-[17px]" />}
+							<span className="max-sm:hidden">Câmera</span>
 						</button>
 					)}
 					{(showLayoutControls || showZoomReset) && <div className="mx-1 h-[23px] w-px bg-[#2b3036]" />}

@@ -1,6 +1,6 @@
 import { peerConfig, waitForICE, wsURL } from "./ice";
 import { clearViewerState, handleRemoteTrack, removeRemoteTracks } from "./remote-streams";
-import type { Member, PublisherSession, RoomStream, Signal, StreamOwner, ViewerSession } from "./types";
+import type { Member, PublishKind, PublisherSession, RoomStream, Signal, StreamOwner, ViewerSession } from "./types";
 import { roomDebug, roomDebugError } from "./debug";
 
 type PendingPing = {
@@ -15,8 +15,8 @@ export class RoomClient {
 	private viewer?: ViewerSession;
 	private viewerID?: string;
 	private resumeToken?: string;
-	private publisher?: PublisherSession;
-	private publisherStop?: Promise<void>;
+	private publishers = new Map<PublishKind, PublisherSession>();
+	private publisherStops = new Map<PublishKind, Promise<void>>();
 	private publisherIDs = new Set<string>();
 	private pendingPing?: PendingPing;
 	private pingCounter = 0;
@@ -30,7 +30,7 @@ export class RoomClient {
 		private onStatus: (text: string) => void,
 		private onPeople: (count: number) => void = () => undefined,
 		private onMembers: (members: Member[]) => void = () => undefined,
-		private onPublishingChange: (publishing: boolean) => void = () => undefined,
+		private onPublishingChange: (kind: PublishKind, publishing: boolean) => void = () => undefined,
 		private onRoomClosed: () => void = () => undefined,
 		private onStreamingMembers: (viewerIDs: string[]) => void = () => undefined,
 		private onStreamOwners: (owners: StreamOwner[]) => void = () => undefined,
@@ -146,8 +146,8 @@ export class RoomClient {
 		return promise;
 	}
 
-	async publish(server: string, room: string, stream: MediaStream, frameRate = 30, maxBitrate = 10_000_000) {
-		await this.stopPublish();
+	async publish(kind: PublishKind, server: string, room: string, stream: MediaStream, frameRate = 30, maxBitrate = 10_000_000) {
+		await this.stopPublish(kind);
 		const pc = new RTCPeerConnection(peerConfig);
 		const ws = new WebSocket(wsURL(server));
 		let resolveReady!: () => void;
@@ -157,6 +157,7 @@ export class RoomClient {
 			rejectReady = reject;
 		});
 		const session: PublisherSession = {
+			kind,
 			ws,
 			pc,
 			intentional: false,
@@ -165,7 +166,7 @@ export class RoomClient {
 			resolveReady,
 			rejectReady,
 		};
-		this.publisher = session;
+		this.publishers.set(kind, session);
 		stream.getTracks().forEach((track) => {
 			roomDebug("publisher local track", { id: track.id, kind: track.kind, readyState: track.readyState, enabled: track.enabled });
 			const sender = pc.addTrack(track, stream);
@@ -183,7 +184,7 @@ export class RoomClient {
 			if (!parameters.encodings?.length) return;
 			parameters.encodings[0].maxFramerate = frameRate;
 			parameters.encodings[0].maxBitrate = maxBitrate;
-			parameters.degradationPreference = "maintain-resolution";
+			parameters.degradationPreference = kind === "camera" ? "maintain-framerate" : "maintain-resolution";
 			roomDebug("publisher sender parameters", {
 				trackID: track.id,
 				frameRate,
@@ -193,7 +194,7 @@ export class RoomClient {
 			void sender.setParameters(parameters).catch((error) => roomDebugError("publisher sender parameters failed", error));
 		});
 		pc.onconnectionstatechange = () => {
-			if (this.publisher !== session) return;
+			if (!this.isCurrentPublisher(session)) return;
 			roomDebug("publisher peer state", { state: pc.connectionState, ice: pc.iceConnectionState, signaling: pc.signalingState });
 			if (["failed", "closed"].includes(pc.connectionState)) {
 				this.onStatus(`Conexão de transmissão: ${pc.connectionState}`);
@@ -205,34 +206,34 @@ export class RoomClient {
 		};
 		ws.onmessage = (event) => {
 			void this.publisherSignal(session, JSON.parse(event.data) as Signal).catch((error: unknown) => {
-				if (this.publisher !== session) return;
+				if (!this.isCurrentPublisher(session)) return;
 				this.onStatus(error instanceof Error ? error.message : "Falha ao negociar transmissão");
 				session.rejectReady(error);
 				ws.close();
 			});
 		};
 		ws.onerror = () => {
-			if (this.publisher !== session) return;
+			if (!this.isCurrentPublisher(session)) return;
 			const error = new Error("Erro no WebSocket de transmissão");
 			this.onStatus(error.message);
 			session.rejectReady(error);
 		};
 		ws.onclose = (event) => {
-			if (this.publisher !== session) return;
+			if (!this.isCurrentPublisher(session)) return;
 			roomDebug("publisher websocket close", { code: event.code, reason: event.reason });
 			const intentional = session.intentional;
-			this.publisher = undefined;
+			this.publishers.delete(kind);
 			this.removePublisherID(session.publisherId);
 			pc.close();
 			session.rejectReady(new Error("A conexão de transmissão foi encerrada"));
-			if (!intentional) this.onPublishingChange(false);
+			if (!intentional) this.onPublishingChange(kind, false);
 			if (!intentional && event.code !== 1000) {
 				this.onStatus(`WebSocket de transmissão fechado (${event.code}${event.reason ? `: ${event.reason}` : ""})`);
 			}
 		};
 		this.onStatus("Preparando transmissão...");
 		const timeout = window.setTimeout(() => {
-			if (this.publisher !== session || session.joined) return;
+			if (!this.isCurrentPublisher(session) || session.joined) return;
 			const error = new Error("Tempo esgotado ao iniciar a transmissão");
 			session.rejectReady(error);
 			ws.close();
@@ -244,10 +245,11 @@ export class RoomClient {
 		}
 	}
 
-	stopPublish() {
-		const session = this.publisher;
-		if (!session) return this.publisherStop ?? Promise.resolve();
-		this.publisher = undefined;
+	stopPublish(kind?: PublishKind): Promise<void> {
+		if (!kind) return Promise.all([this.stopPublish("screen"), this.stopPublish("camera")]).then(() => undefined);
+		const session = this.publishers.get(kind);
+		if (!session) return this.publisherStops.get(kind) ?? Promise.resolve();
+		this.publishers.delete(kind);
 		session.intentional = true;
 		this.removePublisherID(session.publisherId);
 
@@ -265,7 +267,7 @@ export class RoomClient {
 			resolveStopped = finish;
 		});
 		session.resolveStopped = resolveStopped;
-		this.publisherStop = stopped;
+		this.publisherStops.set(kind, stopped);
 
 		timeout = window.setTimeout(resolveStopped, 1_000);
 		session.ws.addEventListener("close", resolveStopped, { once: true });
@@ -354,7 +356,7 @@ export class RoomClient {
 			session.resolveStopped();
 			return;
 		}
-		if (this.publisher !== session) return;
+		if (!this.isCurrentPublisher(session)) return;
 		if (message.type === "error") {
 			const error = new Error(message.message ?? "Erro ao transmitir");
 			this.onStatus(error.message);
@@ -371,7 +373,7 @@ export class RoomClient {
 			}
 			await session.pc.setLocalDescription(await session.pc.createOffer());
 			await waitForICE(session.pc);
-			if (session.ws.readyState !== WebSocket.OPEN || this.publisher !== session) return;
+			if (session.ws.readyState !== WebSocket.OPEN || !this.isCurrentPublisher(session)) return;
 			roomDebug("publisher offer sent", { sdpBytes: session.pc.localDescription?.sdp?.length ?? 0 });
 			session.ws.send(JSON.stringify({ type: "offer", sdp: session.pc.localDescription?.sdp }));
 			return;
@@ -444,6 +446,10 @@ export class RoomClient {
 		if (!publisherID) return;
 		this.publisherIDs.delete(publisherID);
 		this.removeRemoteTracks(this.viewer, publisherID, []);
+	}
+
+	private isCurrentPublisher(session: PublisherSession) {
+		return this.publishers.get(session.kind) === session;
 	}
 
 	private finishPing(id: string, value?: number) {

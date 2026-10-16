@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { RoomClient, type Member, type RoomStream, type StreamOwner } from "@/lib/room";
+import { RoomClient, type Member, type PublishKind, type RoomStream, type StreamOwner } from "@/lib/room";
 import { SIGNALING_SERVER } from "@/lib/config";
 import { linkedRoom } from "@/lib/room-link";
 import { storedValue } from "@/lib/storage";
@@ -9,7 +9,7 @@ import { storedValue } from "@/lib/storage";
 const RECONNECT_ATTEMPTS = 5;
 const RECONNECT_STEP_MS = 3_000;
 
-type StopSharing = (message?: string) => void;
+type StopSharing = (message?: string, kind?: PublishKind) => void;
 
 export type RoomSessionOptions = {
 	onStopSharing?: StopSharing;
@@ -59,9 +59,9 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 			(nextMembers) => {
 				if (isCurrentSession()) setMembers(nextMembers);
 			},
-			(publishing) => {
+			(kind, publishing) => {
 				if (isCurrentSession() && !publishing) {
-					onStopSharingRef.current?.("A conexão de transmissão foi encerrada");
+					onStopSharingRef.current?.("A conexão de transmissão foi encerrada", kind);
 				}
 			},
 			() => {
