@@ -42,6 +42,7 @@ var idCounter atomic.Uint64
 
 func newWebRTCAPI(publicIP string, udpMin, udpMax uint) (*webrtc.API, error) {
 	settings := webrtc.SettingEngine{}
+	settings.SetLite(true)
 	if publicIP != "" {
 		settings.SetNAT1To1IPs([]string{publicIP}, webrtc.ICECandidateTypeHost)
 	}

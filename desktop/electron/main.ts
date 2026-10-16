@@ -232,6 +232,7 @@ function createWindow() {
 			backgroundThrottling: false,
 		},
 	}));
+	window.webContents.setWebRTCIPHandlingPolicy("default_public_and_private_interfaces");
 	window.webContents.setWindowOpenHandler(({ url }) => {
 		if (url.startsWith("https://")) void shell.openExternal(url);
 		return { action: "deny" };
