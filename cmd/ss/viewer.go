@@ -45,12 +45,12 @@ func (s *server) handleViewer(rm *room, socket *signalSocket, roomID, name, resu
 	v := &viewer{
 		id:          nextID("view"),
 		resumeToken: newResumeToken(),
-		name:    name,
-		room:    rm,
-		socket:  socket,
-		pc:      pc,
-		senders: make(map[string]*webrtc.RTPSender),
-		tracks:  make(map[string]*forwardedTrack),
+		name:        name,
+		room:        rm,
+		socket:      socket,
+		pc:          pc,
+		senders:     make(map[string]*webrtc.RTPSender),
+		tracks:      make(map[string]*forwardedTrack),
 	}
 	if previous := rm.viewerByResumeToken(resumeToken); previous != nil {
 		log.Printf("viewer=%s replaces stale viewer=%s room=%s", v.id, previous.id, roomID)

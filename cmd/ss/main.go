@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
 	"errors"
 	"flag"
+	"io"
 	"log"
 	"net/http"
+	"os/signal"
+	"syscall"
 	"time"
+
+	"github.com/pion/webrtc/v4"
 
 	"screen-share/web"
 )
@@ -20,6 +26,8 @@ func main() {
 	flag.IntVar(&cfg.maxWSPerIP, "max-ws-per-ip", envIntOr("MAX_WS_PER_IP", defaultMaxWSPerIP), "máximo de conexões WebSocket simultâneas por IP")
 	flag.UintVar(&cfg.udpMin, "udp-min", envUintOr("UDP_MIN", defaultUDPMin), "menor porta UDP usada pelo ICE")
 	flag.UintVar(&cfg.udpMax, "udp-max", envUintOr("UDP_MAX", defaultUDPMax), "maior porta UDP usada pelo ICE")
+	flag.UintVar(&cfg.udpPort, "udp-port", envUintOr("UDP_PORT", 0), "single UDP port for all ICE traffic; overrides udp-min/udp-max when set")
+	trustedProxies := flag.String("trusted-proxies", envOr("TRUSTED_PROXIES", ""), "comma-separated CIDRs or IPs of reverse proxies allowed to set X-Forwarded-For/X-Real-IP")
 	flag.Parse()
 
 	if cfg.maxViewers < 1 || cfg.maxPublishers < 1 || cfg.wsRateLimit < 1 || cfg.maxWSPerIP < 1 {
@@ -29,7 +37,22 @@ func main() {
 		log.Fatal("udp-min e udp-max precisam formar uma faixa válida entre 1 e 65535")
 	}
 
-	api, err := newWebRTCAPI(cfg.publicIP, cfg.udpMin, cfg.udpMax)
+	if err := validateUDPPort(cfg.udpPort); err != nil {
+		log.Fatal(err)
+	}
+	proxies, err := parseTrustedProxies(*trustedProxies)
+	if err != nil {
+		log.Fatal(err)
+	}
+	cfg.trustedProxies = proxies
+
+	var api *webrtc.API
+	var udpMux io.Closer
+	if cfg.udpPort > 0 {
+		api, udpMux, err = newMuxedWebRTCAPI(cfg.publicIP, cfg.udpPort)
+	} else {
+		api, err = newWebRTCAPI(cfg.publicIP, cfg.udpMin, cfg.udpMax)
+	}
 	if err != nil {
 		log.Fatalf("configuração ICE inválida: %v", err)
 	}
@@ -56,9 +79,39 @@ func main() {
 	if cfg.publicIP != "" {
 		log.Printf("ICE anunciando PUBLIC_IP=%s", cfg.publicIP)
 	}
-	log.Printf("ICE usando UDP %d-%d", cfg.udpMin, cfg.udpMax)
+	if cfg.udpPort > 0 {
+		log.Printf("ICE using single UDP port %d", cfg.udpPort)
+	} else {
+		log.Printf("ICE usando UDP %d-%d", cfg.udpMin, cfg.udpMax)
+	}
+	if len(cfg.trustedProxies) > 0 {
+		log.Printf("trusting forwarded headers from %d proxy networks", len(cfg.trustedProxies))
+	}
 	log.Printf("limite WebSocket: %d tentativas/minuto e %d conexões/IP", cfg.wsRateLimit, cfg.maxWSPerIP)
-	if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-		log.Fatal(err)
+
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	serveErr := make(chan error, 1)
+	go func() {
+		serveErr <- httpServer.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serveErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal(err)
+		}
+	case <-ctx.Done():
+		stop()
+		log.Printf("shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			log.Printf("http shutdown: %v", err)
+		}
+	}
+	if udpMux != nil {
+		_ = udpMux.Close()
 	}
 }

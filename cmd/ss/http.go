@@ -20,7 +20,7 @@ type server struct {
 }
 
 func (s *server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
-	ip := peerIP(r)
+	ip := peerIP(r, s.cfg.trustedProxies)
 	if s.limiter != nil && !s.limiter.allow(ip, time.Now()) {
 		w.Header().Set("Retry-After", "60")
 		http.Error(w, "limite de conexões atingido", http.StatusTooManyRequests)
@@ -65,22 +65,52 @@ func (s *server) handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func peerIP(r *http.Request) string {
+func peerIP(r *http.Request, trusted []*net.IPNet) string {
 	remote := requestHostname(r.RemoteAddr)
-	if isLoopbackHost(remote) {
-		for _, value := range []string{r.Header.Get("X-Forwarded-For"), r.Header.Get("X-Real-IP")} {
-			for _, candidate := range strings.Split(value, ",") {
-				candidate = strings.TrimSpace(candidate)
-				if net.ParseIP(candidate) != nil {
-					return candidate
-				}
-			}
+	if isTrustedProxy(remote, trusted) {
+		if ip := forwardedClientIP(r.Header.Get("X-Forwarded-For"), trusted); ip != "" {
+			return ip
+		}
+		if ip := strings.TrimSpace(r.Header.Get("X-Real-IP")); net.ParseIP(ip) != nil {
+			return ip
 		}
 	}
 	if net.ParseIP(remote) != nil {
 		return remote
 	}
 	return "unknown"
+}
+
+func forwardedClientIP(header string, trusted []*net.IPNet) string {
+	candidates := strings.Split(header, ",")
+	first := ""
+	for i := len(candidates) - 1; i >= 0; i-- {
+		candidate := strings.TrimSpace(candidates[i])
+		if net.ParseIP(candidate) == nil {
+			continue
+		}
+		if !isTrustedProxy(candidate, trusted) {
+			return candidate
+		}
+		first = candidate
+	}
+	return first
+}
+
+func isTrustedProxy(host string, trusted []*net.IPNet) bool {
+	if isLoopbackHost(host) {
+		return true
+	}
+	ip := net.ParseIP(strings.Trim(host, "[]"))
+	if ip == nil {
+		return false
+	}
+	for _, network := range trusted {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
 }
 
 func sameOrigin(r *http.Request) bool {
