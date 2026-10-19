@@ -5,7 +5,9 @@ contextBridge.exposeInMainWorld("screenShare", {
 	sources: () => ipcRenderer.invoke("capture:sources"),
 	setCaptureSource: (sourceId: string) => ipcRenderer.invoke("capture:set-source", sourceId),
 	hostname: () => ipcRenderer.invoke("system:hostname"),
-	startAudioLoopback: (sourceId: string) => ipcRenderer.invoke("capture:start-audio-loopback", sourceId),
+	audioApps: () => ipcRenderer.invoke("capture:audio-apps"),
+	startAudioLoopback: (sourceId: string | undefined, filter: { mode: string; apps: string[] }) =>
+		ipcRenderer.invoke("capture:start-audio-loopback", sourceId, filter),
 	stopAudioLoopback: () => ipcRenderer.invoke("capture:stop-audio-loopback"),
 	checkForUpdate: () => ipcRenderer.invoke("update:check"),
 	downloadUpdate: () => ipcRenderer.invoke("update:download"),

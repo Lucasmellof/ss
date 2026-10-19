@@ -2,6 +2,25 @@ export type FrameRate = 30 | 60;
 export type SourceType = CaptureSource["kind"];
 export type Resolution = "source" | "720p" | "1080p" | "1440p";
 export type AudioMode = "none" | "system";
+export type AudioFilterMode = AudioFilterSettings["mode"];
+export type AudioFilter = AudioFilterSettings;
+
+export const defaultAudioFilter: AudioFilter = { mode: "exclude", apps: ["discord"] };
+
+export const audioFilterModes: Record<AudioFilterMode, string> = {
+	all: "Todos os apps",
+	include: "Somente estes apps",
+	exclude: "Todos exceto estes apps",
+};
+
+export const normalizeAppName = (value: string) => {
+	const base = value.trim().split(/[\\/]/).pop() ?? "";
+	return base
+		.trim()
+		.toLowerCase()
+		.replace(/\.exe$/, "")
+		.trim();
+};
 
 export const resolutions: Record<Resolution, { label: string; width?: number; height?: number }> = {
 	source: { label: "Original" },
@@ -27,7 +46,7 @@ export type SourcePickerProps = {
 	frameRate: FrameRate;
 	resolution: Resolution;
 	audioMode: AudioMode;
-	includeDiscordAudio: boolean;
+	audioFilter: AudioFilter;
 	nativePicker: boolean;
 	loading: boolean;
 	starting: boolean;
@@ -36,7 +55,7 @@ export type SourcePickerProps = {
 	onFrameRate: (value: FrameRate) => void;
 	onResolution: (value: Resolution) => void;
 	onAudioMode: (value: AudioMode) => void;
-	onIncludeDiscordAudio: (value: boolean) => void;
+	onAudioFilter: (value: AudioFilter) => void;
 	onRefresh: () => void;
 	onClose: () => void;
 	onStart: () => void;

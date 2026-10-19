@@ -1,7 +1,19 @@
 import { useEffect, useRef, useState } from "react";
 import { RoomClient } from "@/lib/room";
 import { roomDebug, roomDebugError } from "@/lib/room/debug";
-import { type AudioMode, type FrameRate, type Resolution, resolutions, type SourceType, videoBitrate } from "./types";
+import { storedValue } from "@/lib/storage";
+import {
+	type AudioFilter,
+	type AudioMode,
+	audioFilterModes,
+	defaultAudioFilter,
+	type FrameRate,
+	normalizeAppName,
+	type Resolution,
+	resolutions,
+	type SourceType,
+	videoBitrate,
+} from "./types";
 
 type RoomClientRef = { current: RoomClient | undefined };
 
@@ -70,6 +82,32 @@ const decodePcmSample = (view: DataView, offset: number, bitsPerSample: number) 
 
 const clampSample = (value: number) => (Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0);
 
+const AUDIO_SETTINGS_KEY = "screen-share.audio-filter";
+
+type AudioSettings = { audioMode: AudioMode; audioFilter: AudioFilter };
+
+const loadAudioSettings = (): AudioSettings => {
+	const fallback: AudioSettings = { audioMode: "none", audioFilter: defaultAudioFilter };
+	try {
+		const raw = storedValue(AUDIO_SETTINGS_KEY);
+		if (!raw) return fallback;
+		const parsed = JSON.parse(raw) as { audioMode?: unknown; audioFilter?: { mode?: unknown; apps?: unknown } };
+		const audioMode: AudioMode = parsed.audioMode === "system" ? "system" : "none";
+		const mode = parsed.audioFilter?.mode;
+		const apps = parsed.audioFilter?.apps;
+		if (typeof mode !== "string" || !(mode in audioFilterModes) || !Array.isArray(apps)) {
+			return { audioMode, audioFilter: defaultAudioFilter };
+		}
+		const names = apps.filter((app): app is string => typeof app === "string").map(normalizeAppName);
+		return {
+			audioMode,
+			audioFilter: { mode: mode as AudioFilter["mode"], apps: [...new Set(names.filter(Boolean))] },
+		};
+	} catch {
+		return fallback;
+	}
+};
+
 export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptureOptions) {
 	const [local, setLocal] = useState<MediaStream | null>(null);
 	const [sharing, setSharing] = useState(false);
@@ -79,8 +117,9 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	const [sourceType, setSourceType] = useState<SourceType>("screen");
 	const [frameRate, setFrameRate] = useState<FrameRate>(30);
 	const [resolution, setResolution] = useState<Resolution>("1080p");
-	const [audioMode, setAudioMode] = useState<AudioMode>("none");
-	const [includeDiscordAudio, setIncludeDiscordAudio] = useState(false);
+	const [initialAudioSettings] = useState(loadAudioSettings);
+	const [audioMode, setAudioMode] = useState<AudioMode>(initialAudioSettings.audioMode);
+	const [audioFilter, setAudioFilter] = useState<AudioFilter>(initialAudioSettings.audioFilter);
 	const [loadingSources, setLoadingSources] = useState(false);
 	const [startingShare, setStartingShare] = useState(false);
 	const localStream = useRef<MediaStream | null>(null);
@@ -94,7 +133,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	const frameRateRef = useRef(frameRate);
 	const resolutionRef = useRef(resolution);
 	const audioModeRef = useRef(audioMode);
-	const includeDiscordAudioRef = useRef(includeDiscordAudio);
+	const audioFilterRef = useRef(audioFilter);
 	const audioContextRef = useRef<AudioContext | null>(null);
 	const audioCleanupRef = useRef<(() => void) | null>(null);
 
@@ -107,8 +146,16 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		frameRateRef.current = frameRate;
 		resolutionRef.current = resolution;
 		audioModeRef.current = audioMode;
-		includeDiscordAudioRef.current = includeDiscordAudio;
-	}, [server, room, onStatus, sources, selectedSourceID, frameRate, resolution, audioMode, includeDiscordAudio]);
+		audioFilterRef.current = audioFilter;
+	}, [server, room, onStatus, sources, selectedSourceID, frameRate, resolution, audioMode, audioFilter]);
+
+	useEffect(() => {
+		try {
+			window.localStorage.setItem(AUDIO_SETTINGS_KEY, JSON.stringify({ audioMode, audioFilter }));
+		} catch (error) {
+			roomDebugError("audio settings save failed", error);
+		}
+	}, [audioMode, audioFilter]);
 
 	const cleanupAudio = () => {
 		if (audioCleanupRef.current) {
@@ -181,7 +228,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		const frameRateValue = frameRateRef.current;
 		const resolutionValue = resolutionRef.current;
 		const audioModeValue = audioModeRef.current;
-		const includeDiscordAudioValue = includeDiscordAudioRef.current;
+		const audioFilterValue = audioFilterRef.current;
 		const maxBitrate = videoBitrate(resolutionValue, frameRateValue);
 		const token = ++captureToken.current;
 		roomDebug("capture start", {
@@ -191,7 +238,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 			frameRate: frameRateValue,
 			resolution: resolutionValue,
 			audioMode: audioModeValue,
-			includeDiscordAudio: includeDiscordAudioValue,
+			audioFilter: audioFilterValue,
 		});
 		setStartingShare(true);
 		cleanupAudio();
@@ -244,20 +291,19 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 			if (capturesAudio && !desktopAudio && !isLinux) {
 				throw new Error("Não foi possível encontrar a fonte de áudio da tela");
 			}
-			const legacyAudio = capturesAudio ? (desktopAudio ?? false) : false;
-			const captureLegacyDesktop = async () => {
+			const captureLegacyDesktop = async (withAudio: boolean) => {
 				if (!desktopVideo) throw new Error("Não foi possível identificar a fonte de captura da tela");
-				return navigator.mediaDevices.getUserMedia({ audio: legacyAudio, video: desktopVideo });
+				return navigator.mediaDevices.getUserMedia({ audio: withAudio ? (desktopAudio ?? false) : false, video: desktopVideo });
 			};
-			const captureLinuxDesktop = async () => {
+			const captureLinuxDesktop = async (withAudio: boolean) => {
 				try {
-					return await captureLegacyDesktop();
+					return await captureLegacyDesktop(withAudio);
 				} catch (legacyError) {
 					roomDebugError("legacy Linux desktop capture failed; trying PipeWire display capture", legacyError);
 					if (typeof navigator.mediaDevices.getDisplayMedia !== "function") throw legacyError;
 
 					const videoStream = await navigator.mediaDevices.getDisplayMedia({ video: displayVideo, audio: false });
-					if (!capturesAudio) return videoStream;
+					if (!withAudio) return videoStream;
 					if (!desktopAudio) {
 						stopTracks(videoStream);
 						throw new Error("Não foi possível identificar a fonte de áudio do desktop no Linux", { cause: legacyError });
@@ -273,21 +319,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 				}
 			};
 
-			if (
-				!isLinux &&
-				source &&
-				capturesAudio &&
-				(!includeDiscordAudioValue || isWindow) &&
-				desktopVideo &&
-				desktopAudio &&
-				window.screenShare?.startAudioLoopback &&
-				window.screenShare?.onAudioChunk
-			) {
-				const videoStream = await navigator.mediaDevices.getUserMedia({
-					audio: false,
-					video: desktopVideo,
-				});
-
+			const startNativeAudio = async (): Promise<MediaStreamTrack | undefined> => {
 				const audioCtx = new AudioContext({ sampleRate: 48000 });
 				audioContextRef.current = audioCtx;
 				if (audioCtx.state === "suspended") {
@@ -313,27 +345,28 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 							bufferedAudio = bufferedAudio.slice(AUDIO_HEADER_SIZE);
 							roomDebug("audio stream format", audioFormat);
 						}
+						const format = audioFormat;
 
-						const frameBytes = audioFormat.blockAlign;
+						const frameBytes = format.blockAlign;
 						const frameCount = Math.floor(bufferedAudio.byteLength / frameBytes);
 						if (frameCount <= 0) return;
 						const bytesToConsume = frameCount * frameBytes;
 						const raw = bufferedAudio.slice(0, bytesToConsume);
 						bufferedAudio = bufferedAudio.slice(bytesToConsume);
 						const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
-						const sampleBytes = Math.max(1, Math.floor(audioFormat.blockAlign / audioFormat.channels));
-						const audioBuffer = audioCtx.createBuffer(2, frameCount, audioFormat.sampleRate);
+						const sampleBytes = Math.max(1, Math.floor(format.blockAlign / format.channels));
+						const audioBuffer = audioCtx.createBuffer(2, frameCount, format.sampleRate);
 						const leftChannel = audioBuffer.getChannelData(0);
 						const rightChannel = audioBuffer.getChannelData(1);
 
 						const readSample = (frame: number, channel: number) => {
-							const sourceChannel = Math.min(channel, audioFormat.channels - 1);
+							const sourceChannel = Math.min(channel, format.channels - 1);
 							const offset = frame * frameBytes + sourceChannel * sampleBytes;
-							if (audioFormat.kind === "float32") {
+							if (format.kind === "float32") {
 								return offset + 4 <= view.byteLength ? clampSample(view.getFloat32(offset, true)) : 0;
 							}
 							return offset + sampleBytes <= view.byteLength
-								? clampSample(decodePcmSample(view, offset, audioFormat.bitsPerSample))
+								? clampSample(decodePcmSample(view, offset, format.bitsPerSample))
 								: 0;
 						};
 
@@ -361,28 +394,33 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 				});
 
 				audioCleanupRef.current = unsubscribe;
-				const loopbackStarted = await window.screenShare.startAudioLoopback(source.id);
-				if (!loopbackStarted) {
-					roomDebug("native audio loopback unavailable; using Electron desktop audio capture");
-					unsubscribe();
-					audioCleanupRef.current = null;
-					await audioCtx.close().catch(() => undefined);
-					if (audioContextRef.current === audioCtx) audioContextRef.current = null;
-					stopTracks(videoStream);
-					stream = await navigator.mediaDevices.getUserMedia({ audio: desktopAudio, video: desktopVideo });
-				} else {
-					const videoTrack = videoStream.getVideoTracks()[0];
-					const audioTrack = destination.stream.getAudioTracks()[0];
-					if (audioTrack) {
-						audioTrack.contentHint = "music";
-					}
-
-					stream = new MediaStream([videoTrack, ...(audioTrack ? [audioTrack] : [])]);
+				const loopbackStarted = await window.screenShare.startAudioLoopback(source?.id, audioFilterValue);
+				const audioTrack = destination.stream.getAudioTracks()[0];
+				if (!loopbackStarted || !audioTrack) {
+					roomDebug("native audio loopback unavailable; using Chromium desktop audio capture");
+					cleanupAudio();
+					return undefined;
 				}
+				audioTrack.contentHint = "music";
+				return audioTrack;
+			};
+
+			const nativeAudioAvailable =
+				capturesAudio &&
+				(isLinux || Boolean(source && desktopVideo)) &&
+				typeof window.screenShare?.startAudioLoopback === "function" &&
+				typeof window.screenShare?.onAudioChunk === "function";
+			const nativeAudioTrack = nativeAudioAvailable ? await startNativeAudio() : undefined;
+
+			if (nativeAudioTrack) {
+				const videoStream = isLinux
+					? await captureLinuxDesktop(false)
+					: await navigator.mediaDevices.getUserMedia({ audio: false, video: desktopVideo });
+				stream = new MediaStream([...videoStream.getVideoTracks(), nativeAudioTrack]);
 			} else if (isLinux) {
-				stream = await captureLinuxDesktop();
+				stream = await captureLinuxDesktop(capturesAudio);
 			} else {
-				stream = await captureLegacyDesktop();
+				stream = await captureLegacyDesktop(capturesAudio);
 			}
 			if (capturesAudio && stream.getAudioTracks().length === 0) {
 				throw new Error("A fonte não forneceu uma faixa de áudio");
@@ -480,7 +518,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		frameRate,
 		resolution,
 		audioMode,
-		includeDiscordAudio,
+		audioFilter,
 		loadingSources,
 		startingShare,
 		setPickerOpen,
@@ -489,7 +527,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		setFrameRate,
 		setResolution,
 		setAudioMode,
-		setIncludeDiscordAudio,
+		setAudioFilter,
 		loadSources,
 		selectSourceType,
 		selectSource,

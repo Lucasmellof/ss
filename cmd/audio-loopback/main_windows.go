@@ -3,8 +3,8 @@
 package main
 
 import (
-	"encoding/binary"
-	"flag"
+	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -27,10 +27,6 @@ const (
 	waveFormatIEEEFloat  = 0x0003
 	waveFormatExtensible = 0xfffe
 
-	audioSampleFloat32 = 1
-	audioSamplePCM     = 2
-	audioStreamVersion = 1
-
 	processLoopbackInclude = 0
 	processLoopbackExclude = 1
 
@@ -38,6 +34,10 @@ const (
 	waitTimeout = 258
 
 	vtBlob = 0x0041
+
+	sFalse                  = 0x00000001
+	audclntSNoSingleProcess = 0x0889000D
+	windowsScanInterval     = 2 * time.Second
 )
 
 var (
@@ -47,20 +47,11 @@ var (
 	iidAgileObject               = ole.NewGUID("{94EA2B94-E9CC-49E0-C0FF-EE64CA8F5B90}")
 )
 
-type audioFormatInfo struct {
-	sampleKind byte
-	channels   byte
-	sampleRate uint32
-	blockAlign uint16
-	bits       byte
-	validBits  byte
-}
-
 func main() {
 	runtime.LockOSThread()
 
 	if err := ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED); err != nil {
-		log.Printf("CoInitializeEx falhou: %v", err)
+		log.Printf("CoInitializeEx failed: %v", err)
 		runtime.UnlockOSThread()
 		os.Exit(1)
 	}
@@ -72,58 +63,290 @@ func main() {
 }
 
 func run(args []string) int {
-	flags := flag.NewFlagSet("AudioLoopback", flag.ContinueOnError)
-	flags.SetOutput(os.Stderr)
-	pid := flags.Uint("pid", 0, "PID do processo a capturar")
-	hwnd := flags.Uint64("hwnd", 0, "handle da janela a capturar")
-	screen := flags.Bool("screen", false, "capturar a tela e excluir o Discord")
-	excludeDiscord := flags.Bool("exclude-discord", false, "excluir a árvore do Discord")
-	if err := flags.Parse(args); err != nil {
+	opts, err := parseOptions(args, os.Stderr)
+	if err != nil {
+		log.Printf("invalid arguments: %v", err)
 		return 2
 	}
+	if opts.list {
+		return listAudioApps(opts.filter())
+	}
 
-	targetPID := uint32(*pid)
-	if *hwnd != 0 {
+	targetPID := opts.pid
+	if opts.hwnd != 0 {
 		var windowPID uint32
-		if _, err := windows.GetWindowThreadProcessId(windows.HWND(*hwnd), &windowPID); err != nil {
-			log.Printf("GetWindowThreadProcessId falhou: %v", err)
+		if _, err := windows.GetWindowThreadProcessId(windows.HWND(opts.hwnd), &windowPID); err != nil {
+			log.Printf("GetWindowThreadProcessId failed: %v", err)
 			return 1
 		}
 		targetPID = windowPID
 	}
 
-	if *screen || *excludeDiscord {
+	if targetPID != 0 {
+		err := captureProcessAudio(targetPID, processLoopbackInclude)
+		if err == nil {
+			return 0
+		}
+		log.Printf("falling back to the default device after PID %d failed: %v", targetPID, err)
+		return captureDefaultDevice()
+	}
+
+	if opts.mode != "" {
+		return runFilteredCapture(opts)
+	}
+
+	if opts.screen || opts.excludeDiscord {
 		discordRootPID := findDiscordRootPID()
 		log.Printf("isScreen=true discordRootPID=%d", discordRootPID)
 		if discordRootPID != 0 {
-			log.Printf("iniciando loopback com exclusão da árvore do PID %d", discordRootPID)
-			if err := captureProcessAudio(discordRootPID, processLoopbackExclude); err == nil {
+			log.Printf("starting loopback excluding the process tree of PID %d", discordRootPID)
+			err := captureProcessAudio(discordRootPID, processLoopbackExclude)
+			if err == nil {
 				return 0
-			} else {
-				log.Printf("falha no loopback de exclusão do Discord: %v", err)
 			}
-		}
-		log.Printf("iniciando captura do dispositivo padrão")
-		if err := captureDeviceAudio(); err != nil {
-			log.Printf("captura do dispositivo padrão falhou: %v", err)
-			return 1
-		}
-		return 0
-	}
-
-	if targetPID != 0 {
-		if err := captureProcessAudio(targetPID, processLoopbackInclude); err == nil {
-			return 0
-		} else {
-			log.Printf("fallback para o dispositivo padrão após falha no PID %d: %v", targetPID, err)
+			log.Printf("Discord exclusion loopback failed: %v", err)
 		}
 	}
 
+	return captureDefaultDevice()
+}
+
+func captureDefaultDevice() int {
+	log.Printf("starting default device capture")
 	if err := captureDeviceAudio(); err != nil {
-		log.Printf("captura do dispositivo padrão falhou: %v", err)
+		log.Printf("default device capture failed: %v", err)
 		return 1
 	}
 	return 0
+}
+
+func listAudioApps(cfg filterConfig) int {
+	sessions, tree, err := scanAudioSessions()
+	if err != nil {
+		log.Printf("scan audio sessions: %v", err)
+		return 1
+	}
+	return printAppList(cfg, sessions, tree)
+}
+
+func runFilteredCapture(opts options) int {
+	cfg := opts.filter()
+	if err := probeProcessLoopback(); err != nil {
+		log.Printf("process loopback unavailable: %v", err)
+		return 1
+	}
+	log.Printf("starting filtered capture mode=%s apps=%v selfPID=%d", cfg.mode, opts.apps, cfg.selfPID)
+	err := runMixedCapture(context.Background(), os.Stdout, windowsScanInterval, func() ([]source, error) {
+		var sessions []audioSession
+		var tree processTree
+		if cfg.mode != filterAll {
+			var err error
+			sessions, tree, err = scanAudioSessions()
+			if err != nil {
+				return nil, err
+			}
+		}
+		targets := planLoopbackTargets(cfg, sessions, tree)
+		sources := make([]source, 0, len(targets))
+		for _, target := range targets {
+			sources = append(sources, wasapiSource{target: target})
+		}
+		return sources, nil
+	})
+	if err != nil {
+		log.Printf("capture stopped: %v", err)
+		return 1
+	}
+	return 0
+}
+
+func probeProcessLoopback() error {
+	client, err := activateProcessAudioClient(uint32(os.Getpid()), processLoopbackInclude)
+	if err != nil {
+		return err
+	}
+	client.Release()
+	return nil
+}
+
+func snapshotProcessTree() (processTree, error) {
+	snapshot, err := windows.CreateToolhelp32Snapshot(windows.TH32CS_SNAPPROCESS, 0)
+	if err != nil {
+		return nil, fmt.Errorf("CreateToolhelp32Snapshot: %w", err)
+	}
+	defer windows.CloseHandle(snapshot)
+
+	entry := windows.ProcessEntry32{Size: uint32(unsafe.Sizeof(windows.ProcessEntry32{}))}
+	if err := windows.Process32First(snapshot, &entry); err != nil {
+		return nil, fmt.Errorf("Process32First: %w", err)
+	}
+	tree := make(processTree)
+	for {
+		tree[entry.ProcessID] = processInfo{
+			pid:    entry.ProcessID,
+			parent: entry.ParentProcessID,
+			name:   windows.UTF16ToString(entry.ExeFile[:]),
+		}
+		if err := windows.Process32Next(snapshot, &entry); err != nil {
+			break
+		}
+	}
+	return tree, nil
+}
+
+func scanAudioSessions() ([]audioSession, processTree, error) {
+	tree, err := snapshotProcessTree()
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var enumerator *wca.IMMDeviceEnumerator
+	if err := wca.CoCreateInstance(
+		wca.CLSID_MMDeviceEnumerator,
+		0,
+		wca.CLSCTX_ALL,
+		wca.IID_IMMDeviceEnumerator,
+		&enumerator,
+	); err != nil {
+		return nil, nil, fmt.Errorf("CoCreateInstance(MMDeviceEnumerator): %w", err)
+	}
+	defer enumerator.Release()
+
+	var collection *wca.IMMDeviceCollection
+	if err := enumerator.EnumAudioEndpoints(wca.ERender, wca.DEVICE_STATE_ACTIVE, &collection); err != nil {
+		return nil, nil, fmt.Errorf("EnumAudioEndpoints: %w", err)
+	}
+	defer collection.Release()
+
+	var count uint32
+	if err := collection.GetCount(&count); err != nil {
+		return nil, nil, fmt.Errorf("IMMDeviceCollection.GetCount: %w", err)
+	}
+
+	seen := make(map[uint32]bool)
+	var sessions []audioSession
+	for index := range count {
+		var device *wca.IMMDevice
+		if err := collection.Item(index, &device); err != nil {
+			log.Printf("IMMDeviceCollection.Item(%d): %v", index, err)
+			continue
+		}
+		pids, err := deviceSessionPIDs(device)
+		device.Release()
+		if err != nil {
+			log.Printf("audio sessions of device %d: %v", index, err)
+			continue
+		}
+		for _, pid := range pids {
+			if seen[pid] {
+				continue
+			}
+			seen[pid] = true
+			info, ok := tree[pid]
+			if !ok {
+				continue
+			}
+			sessions = append(sessions, audioSession{pid: pid, exe: info.name})
+		}
+	}
+	return sessions, tree, nil
+}
+
+func deviceSessionPIDs(device *wca.IMMDevice) ([]uint32, error) {
+	var manager *wca.IAudioSessionManager2
+	if err := device.Activate(wca.IID_IAudioSessionManager2, wca.CLSCTX_ALL, nil, &manager); err != nil {
+		return nil, fmt.Errorf("IMMDevice.Activate(IAudioSessionManager2): %w", err)
+	}
+	defer manager.Release()
+
+	var sessionEnumerator *wca.IAudioSessionEnumerator
+	if err := manager.GetSessionEnumerator(&sessionEnumerator); err != nil {
+		return nil, fmt.Errorf("IAudioSessionManager2.GetSessionEnumerator: %w", err)
+	}
+	defer sessionEnumerator.Release()
+
+	var count int
+	if err := sessionEnumerator.GetCount(&count); err != nil {
+		return nil, fmt.Errorf("IAudioSessionEnumerator.GetCount: %w", err)
+	}
+
+	var pids []uint32
+	for index := range int(int32(count)) {
+		var control *wca.IAudioSessionControl
+		if err := sessionEnumerator.GetSession(index, &control); err != nil || control == nil {
+			continue
+		}
+		pid, ok := sessionProcessID(control)
+		control.Release()
+		if ok {
+			pids = append(pids, pid)
+		}
+	}
+	return pids, nil
+}
+
+func sessionProcessID(control *wca.IAudioSessionControl) (uint32, bool) {
+	var state uint32
+	if err := control.GetState(&state); err != nil || state == wca.AudioSessionStateExpired {
+		return 0, false
+	}
+	var control2 *wca.IAudioSessionControl2
+	if err := control.PutQueryInterface(wca.IID_IAudioSessionControl2, &control2); err != nil || control2 == nil {
+		return 0, false
+	}
+	defer control2.Release()
+	var pid uint32
+	if err := control2.GetProcessId(&pid); err != nil && !isOLECode(err, audclntSNoSingleProcess) {
+		return 0, false
+	}
+	return pid, pid != 0
+}
+
+func isOLECode(err error, code uintptr) bool {
+	var oleErr *ole.OleError
+	return errors.As(err, &oleErr) && oleErr.Code() == code
+}
+
+type wasapiSource struct {
+	target loopbackTarget
+}
+
+func (s wasapiSource) key() string {
+	return s.target.key()
+}
+
+func (s wasapiSource) run(ctx context.Context, sink func([]float32)) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if err := ole.CoInitializeEx(0, ole.COINIT_MULTITHREADED); err != nil && !isOLECode(err, sFalse) {
+		return fmt.Errorf("CoInitializeEx: %w", err)
+	}
+	defer ole.CoUninitialize()
+
+	var client *wca.IAudioClient
+	var format *wca.WAVEFORMATEX
+	var err error
+	switch s.target.kind {
+	case loopbackInclude:
+		client, format, err = openProcessLoopback(s.target.pid, processLoopbackInclude)
+	case loopbackExclude:
+		client, format, err = openProcessLoopback(s.target.pid, processLoopbackExclude)
+	default:
+		client, format, err = getDefaultAudioClient()
+	}
+	if err != nil {
+		return err
+	}
+
+	var converter *stereoConverter
+	return streamAudioClient(client, format, ctx.Done(), func(info audioFormatInfo) error {
+		converter = newStereoConverter(info)
+		log.Printf("source %s format: kind=%d %dHz %dch %dbit", s.key(), info.sampleKind, info.sampleRate, info.channels, info.bits)
+		return nil
+	}, func(data []byte) error {
+		sink(converter.convert(data))
+		return nil
+	})
 }
 
 func findDiscordRootPID() uint32 {
@@ -180,20 +403,26 @@ func captureDeviceAudio() error {
 }
 
 func captureProcessAudio(pid, loopbackMode uint32) error {
-	client, err := activateProcessAudioClient(pid, loopbackMode)
+	client, format, err := openProcessLoopback(pid, loopbackMode)
 	if err != nil {
 		return err
 	}
+	return runAudioLoop(client, format)
+}
 
-	// Process loopback requires the mix format from the default render endpoint.
+func openProcessLoopback(pid, loopbackMode uint32) (*wca.IAudioClient, *wca.WAVEFORMATEX, error) {
+	client, err := activateProcessAudioClient(pid, loopbackMode)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	defaultClient, format, err := getDefaultAudioClient()
 	if err != nil {
 		client.Release()
-		return err
+		return nil, nil, err
 	}
 	defaultClient.Release()
-
-	return runAudioLoop(client, format)
+	return client, format, nil
 }
 
 func getDefaultAudioClient() (*wca.IAudioClient, *wca.WAVEFORMATEX, error) {
@@ -234,8 +463,26 @@ func getDefaultAudioClient() (*wca.IAudioClient, *wca.WAVEFORMATEX, error) {
 }
 
 func runAudioLoop(client *wca.IAudioClient, format *wca.WAVEFORMATEX) error {
+	return streamAudioClient(client, format, nil, func(info audioFormatInfo) error {
+		if err := writeAudioHeader(os.Stdout, info); err != nil {
+			return fmt.Errorf("write audio header: %w", err)
+		}
+		log.Printf("format: kind=%d %dHz %dch %dbit block=%d", info.sampleKind, info.sampleRate, info.channels, info.bits, info.blockAlign)
+		return nil
+	}, func(data []byte) error {
+		return writeAll(os.Stdout, data)
+	})
+}
+
+func streamAudioClient(
+	client *wca.IAudioClient,
+	format *wca.WAVEFORMATEX,
+	stop <-chan struct{},
+	onFormat func(audioFormatInfo) error,
+	onPacket func([]byte) error,
+) error {
 	if client == nil || format == nil {
-		return fmt.Errorf("cliente ou formato de áudio nulo")
+		return fmt.Errorf("audio client or format is nil")
 	}
 	defer client.Release()
 	defer ole.CoTaskMemFree(uintptr(unsafe.Pointer(format)))
@@ -260,7 +507,7 @@ func runAudioLoop(client *wca.IAudioClient, format *wca.WAVEFORMATEX) error {
 
 	eventHandle := wca.CreateEventExA(0, 0, 0, wca.EVENT_ALL_ACCESS)
 	if eventHandle == 0 {
-		return fmt.Errorf("CreateEventExA retornou handle nulo")
+		return fmt.Errorf("CreateEventExA returned a null handle")
 	}
 	defer wca.CloseHandle(eventHandle)
 
@@ -273,7 +520,7 @@ func runAudioLoop(client *wca.IAudioClient, format *wca.WAVEFORMATEX) error {
 		return fmt.Errorf("IAudioClient.GetService(IAudioCaptureClient): %w", err)
 	}
 	if captureClient == nil {
-		return fmt.Errorf("IAudioClient.GetService retornou cliente nulo")
+		return fmt.Errorf("IAudioClient.GetService returned a null client")
 	}
 	defer captureClient.Release()
 
@@ -282,23 +529,33 @@ func runAudioLoop(client *wca.IAudioClient, format *wca.WAVEFORMATEX) error {
 	}
 	defer client.Stop()
 
-	if err := writeAudioHeader(os.Stdout, info); err != nil {
-		return fmt.Errorf("escrever cabeçalho de áudio: %w", err)
+	if err := onFormat(info); err != nil {
+		return err
 	}
-	log.Printf("formato: kind=%d %dHz %dch %dbit block=%d", info.sampleKind, info.sampleRate, info.channels, info.bits, info.blockAlign)
-
-	return copyAudioPackets(captureClient, eventHandle, info.blockAlign)
+	return copyAudioPackets(captureClient, eventHandle, info.blockAlign, stop, onPacket)
 }
 
-func copyAudioPackets(captureClient *wca.IAudioCaptureClient, eventHandle uintptr, blockAlign uint16) error {
+func copyAudioPackets(
+	captureClient *wca.IAudioCaptureClient,
+	eventHandle uintptr,
+	blockAlign uint16,
+	stop <-chan struct{},
+	onPacket func([]byte) error,
+) error {
 	var silence []byte
 	for {
+		select {
+		case <-stop:
+			return nil
+		default:
+		}
+
 		waitResult := wca.WaitForSingleObject(eventHandle, 500)
 		if waitResult == waitTimeout {
 			continue
 		}
 		if waitResult != waitObject0 {
-			return fmt.Errorf("WaitForSingleObject retornou 0x%08X", waitResult)
+			return fmt.Errorf("WaitForSingleObject returned 0x%08X", waitResult)
 		}
 
 		for {
@@ -320,7 +577,7 @@ func copyAudioPackets(captureClient *wca.IAudioCaptureClient, eventHandle uintpt
 			}
 
 			byteCount := int(framesRead) * int(blockAlign)
-			var writeErr error
+			var packetErr error
 			if byteCount > 0 {
 				if flags&wca.AUDCLNT_BUFFERFLAGS_SILENT != 0 {
 					if cap(silence) < byteCount {
@@ -329,37 +586,23 @@ func copyAudioPackets(captureClient *wca.IAudioCaptureClient, eventHandle uintpt
 						silence = silence[:byteCount]
 						clear(silence)
 					}
-					writeErr = writeAll(os.Stdout, silence)
+					packetErr = onPacket(silence)
 				} else if data == nil {
-					writeErr = fmt.Errorf("GetBuffer retornou dados nulos para pacote não silencioso")
+					packetErr = fmt.Errorf("GetBuffer returned no data for a non-silent packet")
 				} else {
-					writeErr = writeAll(os.Stdout, unsafe.Slice(data, byteCount))
+					packetErr = onPacket(unsafe.Slice(data, byteCount))
 				}
 			}
 
 			releaseErr := captureClient.ReleaseBuffer(framesRead)
-			if writeErr != nil {
-				return fmt.Errorf("escrever pacote de áudio: %w", writeErr)
+			if packetErr != nil {
+				return fmt.Errorf("handle audio packet: %w", packetErr)
 			}
 			if releaseErr != nil {
 				return fmt.Errorf("IAudioCaptureClient.ReleaseBuffer: %w", releaseErr)
 			}
 		}
 	}
-}
-
-func writeAll(file *os.File, data []byte) error {
-	for len(data) > 0 {
-		written, err := file.Write(data)
-		if err != nil {
-			return err
-		}
-		if written == 0 {
-			return fmt.Errorf("write retornou zero bytes")
-		}
-		data = data[written:]
-	}
-	return nil
 }
 
 func describeAudioFormat(format *wca.WAVEFORMATEX) (audioFormatInfo, error) {
@@ -411,19 +654,6 @@ func describeAudioFormat(format *wca.WAVEFORMATEX) (audioFormatInfo, error) {
 		format.WBitsPerSample,
 		format.NChannels,
 	)
-}
-
-func writeAudioHeader(file *os.File, info audioFormatInfo) error {
-	header := make([]byte, 16)
-	copy(header[:4], "SSAF")
-	header[4] = audioStreamVersion
-	header[5] = info.sampleKind
-	header[6] = info.channels
-	binary.LittleEndian.PutUint32(header[8:12], info.sampleRate)
-	binary.LittleEndian.PutUint16(header[12:14], info.blockAlign)
-	header[14] = info.bits
-	header[15] = info.validBits
-	return writeAll(file, header)
 }
 
 type audioClientActivationParams struct {
