@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 
 if (process.platform !== "win32") {
-	console.log("Helper WASAPI ignorado: o cliente Linux usa a captura de áudio do Chromium/PipeWire.");
+	console.log(`Skipping the WASAPI audio helper: not needed on ${process.platform}.`);
 	process.exit(0);
 }
 

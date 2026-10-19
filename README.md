@@ -57,4 +57,4 @@ O código de sala precisa ter entre 8 e 64 caracteres, usando letras, números, 
 
 ## Cliente desktop para amigos
 
-Há um cliente Electrobun em [desktop/](desktop/README.md) para distribuir uma janela própria no Windows. Ele abre a sala da sua VPS e guarda localmente a URL e a sala usada. Para o caminho mais previsível, use o modo **Assistir**; o modo **Transmitir** depende da captura WebRTC do renderer CEF e deve ser validado nas máquinas que forem usar.
+An Electron desktop client for Windows, Linux and macOS lives in [desktop/](desktop/README.md). It connects to the room on your server and stores the server URL and the last room locally. Release builds are published as `.exe` (portable and installer), `.AppImage`/`.deb` and `.dmg`/`.zip` (universal) on the GitHub releases page.

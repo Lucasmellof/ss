@@ -1,5 +1,6 @@
 import { AppWindow, Check, MonitorUp, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ScreenPermissionNotice } from "./ScreenPermissionNotice";
 import { resolutions, type SourcePickerProps } from "./types";
 
 const fieldClass =
@@ -78,6 +79,7 @@ export function SourcePicker({
 						No Linux, o PipeWire pode abrir o seletor de tela do sistema ao iniciar a captura.
 					</p>
 				)}
+				<ScreenPermissionNotice />
 				<div className="mb-2.5 flex gap-1.5 rounded-[9px] bg-[#0b0e12] p-1" role="tablist" aria-label="Tipo de fonte">
 					<button
 						className={cn(

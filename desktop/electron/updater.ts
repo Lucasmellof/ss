@@ -126,6 +126,9 @@ function pickAsset(assets: GithubAsset[]) {
 		const deb = assets.find((asset) => /\.deb$/i.test(asset.name));
 		return process.env.APPIMAGE ? (appImage ?? deb) : (deb ?? appImage);
 	}
+	if (process.platform === "darwin") {
+		return assets.find((asset) => /\.dmg$/i.test(asset.name));
+	}
 	return undefined;
 }
 

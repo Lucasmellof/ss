@@ -172,6 +172,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		const source = sourcesRef.current.find((item) => item.id === selectedSourceIDRef.current);
 		const roomClient = client.current;
 		const isLinux = window.screenShare.platform === "linux";
+		const isMac = window.screenShare.platform === "darwin";
 		if ((!source && !isLinux) || !roomClient) {
 			onStatusRef.current("Selecione uma tela ou janela para compartilhar");
 			return;
@@ -197,7 +198,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		cleanupAudio();
 		let stream: MediaStream | undefined;
 		try {
-			if (source) await window.screenShare.setCaptureSource(source.id);
+			if (source) await window.screenShare.setCaptureSource(source.id, audioModeValue === "system");
 			const isWindow = source?.kind === "window";
 			const audioSource = source && (isWindow ? source : (sourcesRef.current.find((item) => item.kind === "screen") ?? source));
 			if (audioModeValue === "system" && !isLinux && !audioSource) {
@@ -273,7 +274,15 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 				}
 			};
 
-			if (
+			if (isMac) {
+				stream = await navigator.mediaDevices.getDisplayMedia({ video: displayVideo, audio: capturesAudio });
+				if (capturesAudio && stream.getAudioTracks().length === 0) {
+					stopTracks(stream);
+					throw new Error(
+						"O macOS não forneceu o áudio do sistema. Confira a permissão de Gravação de Tela e use o macOS 13 ou mais recente.",
+					);
+				}
+			} else if (
 				!isLinux &&
 				source &&
 				capturesAudio &&
