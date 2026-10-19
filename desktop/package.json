@@ -3,8 +3,8 @@
 	"version": "0.2.7",
 	"private": true,
 	"description": "Cliente desktop para compartilhamento de tela e áudio.",
-	"author": "Screen Share",
 	"homepage": "https://github.com/Lucasmellof/ss",
+	"author": "Screen Share",
 	"type": "module",
 	"main": "dist-electron/main.js",
 	"scripts": {
@@ -20,7 +20,7 @@
 		"format:check": "oxfmt --check \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" \"scripts/*.mjs\" vite.config.ts electrobun.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
 		"dist": "bun scripts/dist.mjs",
 		"dist:win": "bun run build:audio:win && bun run build && electron-builder --win portable nsis --publish never",
-		"dist:linux": "bun run build && electron-builder --linux AppImage deb --publish never",
+		"dist:linux": "bun run build:audio && bun run build && electron-builder --linux AppImage deb --publish never",
 		"sign": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign-windows.ps1",
 		"dist:signed": "bun run dist:win && bun run sign"
 	},
@@ -113,6 +113,12 @@
 					"arch": [
 						"x64"
 					]
+				}
+			],
+			"extraResources": [
+				{
+					"from": "build/audio-loopback/audio-loopback",
+					"to": "tools/audio-loopback/audio-loopback"
 				}
 			],
 			"category": "AudioVideo",

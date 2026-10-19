@@ -1,5 +1,5 @@
 import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session, shell } from "electron";
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
+import { type ChildProcessWithoutNullStreams, execFile, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -70,15 +70,30 @@ let activeAudioProcess: ChildProcessWithoutNullStreams | null = null;
 let captureSources: Electron.DesktopCapturerSource[] = [];
 let selectedCaptureSourceID: string | undefined;
 
+type AudioFilterMode = "all" | "include" | "exclude";
+type AudioFilter = { mode: AudioFilterMode; apps: string[] };
+type AudioApp = { pid: number; name: string; exe: string };
+
+const AUDIO_FILTER_MODES = new Set<AudioFilterMode>(["all", "include", "exclude"]);
+const MAX_FILTER_APPS = 64;
+const MAX_APP_NAME_LENGTH = 128;
+
+function audioLoopbackBinaryName(): string | undefined {
+	if (process.platform === "win32") return "AudioLoopback.exe";
+	if (process.platform === "linux") return "audio-loopback";
+	return undefined;
+}
+
 function getAudioLoopbackPath(): string | undefined {
-	if (process.platform !== "win32") return undefined;
+	const binary = audioLoopbackBinaryName();
+	if (!binary) return undefined;
 
 	const possiblePaths = [
-		path.join(process.resourcesPath, "tools/audio-loopback/AudioLoopback.exe"),
-		path.resolve(root, "../build/audio-loopback/AudioLoopback.exe"),
-		path.resolve(root, "../tools/audio-loopback/AudioLoopback.exe"),
-		path.resolve(root, "../../tools/audio-loopback/AudioLoopback.exe"),
-		path.resolve(process.cwd(), "tools/audio-loopback/AudioLoopback.exe"),
+		path.join(process.resourcesPath, "tools/audio-loopback", binary),
+		path.resolve(root, "../build/audio-loopback", binary),
+		path.resolve(root, "../tools/audio-loopback", binary),
+		path.resolve(root, "../../tools/audio-loopback", binary),
+		path.resolve(process.cwd(), "tools/audio-loopback", binary),
 	];
 	for (const p of possiblePaths) {
 		if (fs.existsSync(p)) return p;
@@ -86,44 +101,97 @@ function getAudioLoopbackPath(): string | undefined {
 	return possiblePaths[1];
 }
 
+function sanitizeAudioFilter(value: unknown): AudioFilter {
+	const input = (value ?? {}) as { mode?: unknown; apps?: unknown };
+	const mode = AUDIO_FILTER_MODES.has(input.mode as AudioFilterMode) ? (input.mode as AudioFilterMode) : "all";
+	const apps = Array.isArray(input.apps)
+		? [
+				...new Set(
+					input.apps
+						.filter((name): name is string => typeof name === "string")
+						.map((name) => name.trim())
+						.filter((name) => name.length > 0 && name.length <= MAX_APP_NAME_LENGTH),
+				),
+			].slice(0, MAX_FILTER_APPS)
+		: [];
+	return { mode, apps };
+}
+
+function audioFilterArgs(filter: AudioFilter): string[] {
+	const args = ["--mode", filter.mode];
+	if (filter.mode !== "all") {
+		for (const name of filter.apps) args.push("--app", name);
+	}
+	return args;
+}
+
+function isAudioApp(value: unknown): value is AudioApp {
+	const candidate = value as Partial<AudioApp> | null;
+	return typeof candidate?.pid === "number" && typeof candidate.name === "string" && typeof candidate.exe === "string";
+}
+
+function parseAudioApps(output: string): AudioApp[] {
+	try {
+		const parsed: unknown = JSON.parse(output);
+		return Array.isArray(parsed) ? parsed.filter(isAudioApp) : [];
+	} catch (error) {
+		console.error("[AudioLoopback] invalid audio app list:", error);
+		return [];
+	}
+}
+
+function listAudioApps(): Promise<AudioApp[]> {
+	const helperPath = getAudioLoopbackPath();
+	if (!helperPath || !fs.existsSync(helperPath)) return Promise.resolve([]);
+	return new Promise((resolve) => {
+		execFile(
+			helperPath,
+			["--list", "--self-pid", String(process.pid)],
+			{ timeout: 5_000, windowsHide: true, maxBuffer: 1024 * 1024 },
+			(error, stdout, stderr) => {
+				if (error) console.error("[AudioLoopback] failed to list audio apps:", error.message, stderr);
+				resolve(error ? [] : parseAudioApps(stdout));
+			},
+		);
+	});
+}
+
 function stopAudioProcess() {
 	if (activeAudioProcess) {
 		try {
 			activeAudioProcess.kill();
-		} catch {
-		}
+		} catch {}
 		activeAudioProcess = null;
 	}
 }
 
-async function startAudioLoopback(window: BrowserWindow, sourceId: string): Promise<boolean> {
+async function startAudioLoopback(window: BrowserWindow, sourceId: string | undefined, filter: AudioFilter): Promise<boolean> {
 	stopAudioProcess();
-	if (process.platform !== "win32") {
-		console.info("[AudioLoopback] helper WASAPI indisponível nesta plataforma; usando a captura do Chromium");
+	if (!audioLoopbackBinaryName()) {
+		console.info("[AudioLoopback] native audio helper is not available on this platform; using Chromium capture");
 		return false;
 	}
 
-	const isWindow = sourceId.startsWith("window:");
-	const isScreen = sourceId.startsWith("screen:");
-	console.log("[AudioLoopback] startAudioLoopback chamado:", { sourceId, isWindow, isScreen });
-	if (!isWindow && !isScreen) return false;
+	const isWindow = sourceId?.startsWith("window:") ?? false;
+	const isScreen = sourceId?.startsWith("screen:") ?? false;
+	console.log("[AudioLoopback] start requested:", { sourceId, isWindow, isScreen, filter });
+	if (process.platform === "win32" && !isWindow && !isScreen) return false;
 
 	const helperPath = getAudioLoopbackPath();
 	console.log("[AudioLoopback] helperPath:", helperPath, "exists:", helperPath ? fs.existsSync(helperPath) : false);
 	if (!helperPath || !fs.existsSync(helperPath)) {
-		console.error("AudioLoopback.exe não encontrado em:", helperPath ?? "caminho não configurado");
+		console.error("[AudioLoopback] helper not found at:", helperPath ?? "unconfigured path");
 		return false;
 	}
 
-	const args: string[] = [];
-	if (isWindow) {
-		const parts = sourceId.split(":");
-		const hwnd = parts[1];
-		console.log("[AudioLoopback] sourceId partes:", parts, "hwnd extraído:", hwnd);
+	const args: string[] = ["--self-pid", String(process.pid)];
+	if (process.platform === "win32" && isWindow) {
+		const hwnd = sourceId?.split(":")[1];
+		console.log("[AudioLoopback] window handle:", hwnd);
 		if (!hwnd) return false;
 		args.push("--hwnd", hwnd);
 	} else {
-		args.push("--exclude-discord");
+		args.push(...audioFilterArgs(filter));
 	}
 
 	console.log("[AudioLoopback] Iniciando processo com args:", args);
@@ -253,11 +321,13 @@ app.whenReady().then(() => {
 		return net.fetch(pathToFileURL(filePath).toString());
 	});
 
-
 	const signalingOrigin = "https://ss.carmellium.com";
-	session.defaultSession.webRequest.onBeforeSendHeaders({ urls: [`wss://ss.carmellium.com/*`, `ws://ss.carmellium.com/*`] }, (details, callback) => {
-		callback({ requestHeaders: { ...details.requestHeaders, Origin: signalingOrigin } });
-	});
+	session.defaultSession.webRequest.onBeforeSendHeaders(
+		{ urls: [`wss://ss.carmellium.com/*`, `ws://ss.carmellium.com/*`] },
+		(details, callback) => {
+			callback({ requestHeaders: { ...details.requestHeaders, Origin: signalingOrigin } });
+		},
+	);
 
 	if (process.platform === "linux") {
 		session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
@@ -291,10 +361,11 @@ app.whenReady().then(() => {
 		pendingRoom = undefined;
 		return room ?? null;
 	});
-	ipcMain.handle("capture:start-audio-loopback", (_event, sourceId: string) => {
+	ipcMain.handle("capture:audio-apps", () => listAudioApps());
+	ipcMain.handle("capture:start-audio-loopback", (_event, sourceId: unknown, filter: unknown) => {
 		const win = BrowserWindow.fromWebContents(_event.sender);
 		if (!win) return false;
-		return startAudioLoopback(win, sourceId);
+		return startAudioLoopback(win, typeof sourceId === "string" ? sourceId : undefined, sanitizeAudioFilter(filter));
 	});
 	ipcMain.handle("capture:stop-audio-loopback", () => {
 		stopAudioProcess();

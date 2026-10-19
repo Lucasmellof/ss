@@ -1,5 +1,6 @@
 import { AppWindow, Check, MonitorUp, RefreshCw, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AudioAppFilter } from "./AudioAppFilter";
 import { resolutions, type SourcePickerProps } from "./types";
 
 const fieldClass =
@@ -14,7 +15,7 @@ export function SourcePicker({
 	frameRate,
 	resolution,
 	audioMode,
-	includeDiscordAudio,
+	audioFilter,
 	nativePicker,
 	loading,
 	starting,
@@ -23,7 +24,7 @@ export function SourcePicker({
 	onFrameRate,
 	onResolution,
 	onAudioMode,
-	onIncludeDiscordAudio,
+	onAudioFilter,
 	onRefresh,
 	onClose,
 	onStart,
@@ -190,16 +191,8 @@ export function SourcePicker({
 							</select>
 						</label>
 					</div>
-					{audioMode === "system" && sourceType === "screen" && (
-						<label className="mt-3 flex cursor-pointer items-center gap-2 text-xs font-bold text-app-muted">
-							<input
-								className="size-4 accent-app-accent"
-								type="checkbox"
-								checked={includeDiscordAudio}
-								onChange={(event) => onIncludeDiscordAudio(event.target.checked)}
-							/>
-							Incluir áudio do Discord
-						</label>
+					{audioMode === "system" && (sourceType === "screen" || nativePicker) && (
+						<AudioAppFilter value={audioFilter} onChange={onAudioFilter} />
 					)}
 					<div className="mt-[17px] flex justify-end gap-2 max-sm:[&>button]:flex-1">
 						<button

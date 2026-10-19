@@ -313,7 +313,7 @@ func buildAppList(cfg filterConfig, sessions []audioSession, tree processTree) [
 	apps := make([]audioApp, 0, len(sessions))
 	seen := make(map[string]bool)
 	for _, session := range sessions {
-		if session.pid == 0 || cfg.isSelf(session.pid, tree) {
+		if cfg.isSelf(session.pid, tree) {
 			continue
 		}
 		key := normalizeAppName(session.exe)

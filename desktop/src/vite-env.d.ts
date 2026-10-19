@@ -24,6 +24,8 @@ declare global {
 		notes: string;
 		status: "new" | "current" | "old";
 	};
+	type AudioApp = { pid: number; name: string; exe: string };
+	type AudioFilterSettings = { mode: "all" | "include" | "exclude"; apps: string[] };
 	type DesktopPlatform = "win32" | "linux" | "darwin" | "freebsd" | "unknown";
 	interface Window {
 		screenShare: {
@@ -31,7 +33,8 @@ declare global {
 			sources(): Promise<CaptureSource[]>;
 			setCaptureSource(sourceId: string): Promise<boolean>;
 			hostname(): Promise<string>;
-			startAudioLoopback(sourceId: string): Promise<boolean>;
+			audioApps(): Promise<AudioApp[]>;
+			startAudioLoopback(sourceId: string | undefined, filter: AudioFilterSettings): Promise<boolean>;
 			stopAudioLoopback(): Promise<void>;
 			checkForUpdate(): Promise<UpdateCheckResult>;
 			downloadUpdate(): Promise<string>;

@@ -65,6 +65,7 @@ func main() {
 func run(args []string) int {
 	opts, err := parseOptions(args, os.Stderr)
 	if err != nil {
+		log.Printf("invalid arguments: %v", err)
 		return 2
 	}
 	if opts.list {
