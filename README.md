@@ -4,19 +4,28 @@ Um serviço simples feito com o GPT 5.6 Luna MAX. A ideia foi fazer algo simples
 
 ## Como usar localmente
 
+A interface web é a mesma do app desktop (React, em `desktop/src`), compilada para `web/dist` e embutida no binário Go. Gere-a uma vez antes de rodar o servidor:
+
 ```powershell
+cd desktop
+bun install
+bun run build:web
+cd ..
 go run ./cmd/ss
 ```
 
-Abra `http://localhost:8080`, escolha uma sala e clique em **Transmitir**. Para o áudio do PC, use uma versão atual do Chrome ou Edge, selecione a tela inteira e marque **Compartilhar áudio do sistema**.
+Sem esse passo o servidor ainda compila e roda, mas a página inicial só mostra um aviso pedindo o build da interface.
 
-Em outro navegador, abra a mesma URL, selecione **Assistir**, digite o mesmo nome de sala e entre.
+Abra `http://localhost:8080`, digite a sala e o seu nome e clique em **Entrar na sala**. Dentro da sala, use **Compartilhar** para transmitir; o navegador pede a tela, janela ou aba na próxima etapa. Para o áudio do PC, use uma versão atual do Chrome ou Edge, escolha **Áudio do PC**, selecione a tela inteira e marque **Compartilhar áudio do sistema**.
+
+Em outro navegador, abra o link copiado com **Copiar link** (ou a mesma URL com a mesma sala) para assistir. Várias pessoas podem transmitir ao mesmo tempo, com grade ou foco, zoom, mini-mapa, ping, sons, reconexão e volume por transmissão, como no app. Quem tem o app desktop instalado pode usar **Abrir no app desktop**.
 
 ## Deploy em VPS
 
-O binário não precisa de banco de dados nem de arquivos externos:
+O binário não precisa de banco de dados nem de arquivos externos; a interface web fica embutida nele:
 
 ```bash
+(cd desktop && bun install && bun run build:web)
 go build -trimpath -ldflags='-s -w' -o screen-share ./cmd/ss
 PUBLIC_IP='203.0.113.10' ./screen-share -addr 127.0.0.1:8080
 ```
@@ -38,6 +47,8 @@ Copie o arquivo de ambiente e preencha o IP público real da VPS; o [docker-comp
 cp .env.example .env
 docker compose up -d --build
 ```
+
+O [Dockerfile](Dockerfile) compila a interface web num estágio com Bun antes do build Go, então não é preciso rodar `bun run build:web` na máquina.
 
 Para produção, use uma faixa UDP fixa no firewall e um proxy TLS na frente. O cliente usa STUN para atravessar NAT; redes muito restritivas podem exigir um servidor TURN.
 

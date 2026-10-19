@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { RoomClient } from "@/lib/room";
 import { roomDebug, roomDebugError } from "@/lib/room/debug";
+import { desktop, isDesktop, platform } from "@/lib/platform";
 import { type AudioMode, type FrameRate, type Resolution, resolutions, type SourceType, videoBitrate } from "./types";
 
 type RoomClientRef = { current: RoomClient | undefined };
@@ -70,6 +71,18 @@ const decodePcmSample = (view: DataView, offset: number, bitsPerSample: number) 
 
 const clampSample = (value: number) => (Number.isFinite(value) ? Math.max(-1, Math.min(1, value)) : 0);
 
+const captureBrowserDisplay = async (video: MediaTrackConstraints, audio: boolean) => {
+	if (typeof navigator.mediaDevices?.getDisplayMedia !== "function") {
+		throw new Error("Este navegador não permite compartilhar a tela");
+	}
+	return navigator.mediaDevices.getDisplayMedia({
+		video,
+		audio: audio ? ({ suppressLocalAudioPlayback: false } as MediaTrackConstraints) : false,
+		selfBrowserSurface: "exclude",
+		systemAudio: "include",
+	} as DisplayMediaStreamOptions);
+};
+
 export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptureOptions) {
 	const [local, setLocal] = useState<MediaStream | null>(null);
 	const [sharing, setSharing] = useState(false);
@@ -119,17 +132,18 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 			void audioContextRef.current.close().catch(() => undefined);
 			audioContextRef.current = null;
 		}
-		if (window.screenShare?.stopAudioLoopback) {
-			void window.screenShare.stopAudioLoopback().catch(() => undefined);
+		if (desktop?.stopAudioLoopback) {
+			void desktop.stopAudioLoopback().catch(() => undefined);
 		}
 	};
 
 	const loadSources = async () => {
 		setPickerOpen(true);
+		if (!desktop) return;
 		setLoadingSources(true);
 		const requestID = ++sourceRequest.current;
 		try {
-			const available = await window.screenShare.sources();
+			const available = await desktop.sources();
 			if (sourceRequest.current !== requestID) return;
 			const current = available.find((source) => source.id === selectedSourceIDRef.current);
 			const next = current ?? available.find((source) => source.kind === "screen") ?? available[0];
@@ -171,8 +185,9 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	const startSharing = async () => {
 		const source = sourcesRef.current.find((item) => item.id === selectedSourceIDRef.current);
 		const roomClient = client.current;
-		const isLinux = window.screenShare.platform === "linux";
-		if ((!source && !isLinux) || !roomClient) {
+		const isLinux = platform === "linux";
+		const usesSystemPicker = isLinux || !isDesktop;
+		if ((!source && !usesSystemPicker) || !roomClient) {
 			onStatusRef.current("Selecione uma tela ou janela para compartilhar");
 			return;
 		}
@@ -197,10 +212,10 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		cleanupAudio();
 		let stream: MediaStream | undefined;
 		try {
-			if (source) await window.screenShare.setCaptureSource(source.id);
+			if (source) await desktop?.setCaptureSource(source.id);
 			const isWindow = source?.kind === "window";
 			const audioSource = source && (isWindow ? source : (sourcesRef.current.find((item) => item.kind === "screen") ?? source));
-			if (audioModeValue === "system" && !isLinux && !audioSource) {
+			if (audioModeValue === "system" && !usesSystemPicker && !audioSource) {
 				throw new Error(
 					isWindow
 						? "Não foi possível encontrar a janela para capturar o áudio do aplicativo"
@@ -241,7 +256,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 						}
 					: {}),
 			};
-			if (capturesAudio && !desktopAudio && !isLinux) {
+			if (capturesAudio && !desktopAudio && !usesSystemPicker) {
 				throw new Error("Não foi possível encontrar a fonte de áudio da tela");
 			}
 			const legacyAudio = capturesAudio ? (desktopAudio ?? false) : false;
@@ -280,8 +295,8 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 				(!includeDiscordAudioValue || isWindow) &&
 				desktopVideo &&
 				desktopAudio &&
-				window.screenShare?.startAudioLoopback &&
-				window.screenShare?.onAudioChunk
+				desktop?.startAudioLoopback &&
+				desktop?.onAudioChunk
 			) {
 				const videoStream = await navigator.mediaDevices.getUserMedia({
 					audio: false,
@@ -300,7 +315,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 				let audioFormat: AudioStreamFormat | undefined;
 				let audioDecodeErrorReported = false;
 
-				const unsubscribe = window.screenShare.onAudioChunk((chunk) => {
+				const unsubscribe = desktop.onAudioChunk((chunk) => {
 					if (audioContextRef.current !== audioCtx || audioCtx.state === "closed") return;
 					try {
 						const incoming = new Uint8Array(chunk.byteLength);
@@ -361,7 +376,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 				});
 
 				audioCleanupRef.current = unsubscribe;
-				const loopbackStarted = await window.screenShare.startAudioLoopback(source.id);
+				const loopbackStarted = await desktop.startAudioLoopback(source.id);
 				if (!loopbackStarted) {
 					roomDebug("native audio loopback unavailable; using Electron desktop audio capture");
 					unsubscribe();
@@ -379,6 +394,8 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 
 					stream = new MediaStream([videoTrack, ...(audioTrack ? [audioTrack] : [])]);
 				}
+			} else if (!isDesktop) {
+				stream = await captureBrowserDisplay(displayVideo, capturesAudio);
 			} else if (isLinux) {
 				stream = await captureLinuxDesktop();
 			} else {

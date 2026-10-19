@@ -1,11 +1,14 @@
 package main
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -500,4 +503,93 @@ func awaitGathering(t *testing.T, done <-chan struct{}) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("ICE gathering timed out")
 	}
+}
+
+func spaTestFiles() fstest.MapFS {
+	return fstest.MapFS{
+		"_shell.html":   {Data: []byte(`<!doctype html><html><head><script>self.boot=1</script></head><body><script type="module" src="/assets/app.js"></script></body></html>`)},
+		"assets/app.js": {Data: []byte("console.log(1)")},
+		"favicon.ico":   {Data: []byte("icon")},
+		".gitkeep":      {Data: []byte("")},
+	}
+}
+
+func TestSPAFallback(t *testing.T) {
+	handler := testServer(t).routes(spaTestFiles())
+	shell := string(spaTestFiles()["_shell.html"].Data)
+	for _, target := range []string{"/", "/room", "/room/deep/path?room=testroom123", "/index.html", "/_shell.html", "/.gitkeep"} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, target, nil))
+		if recorder.Code != http.StatusOK || recorder.Body.String() != shell {
+			t.Fatalf("%s: expected shell, got code=%d body=%q", target, recorder.Code, recorder.Body.String())
+		}
+		if contentType := recorder.Header().Get("Content-Type"); !strings.HasPrefix(contentType, "text/html") {
+			t.Fatalf("%s: unexpected content type %q", target, contentType)
+		}
+	}
+}
+
+func TestSPAServesAssets(t *testing.T) {
+	handler := testServer(t).routes(spaTestFiles())
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/assets/app.js", nil))
+	if recorder.Code != http.StatusOK || recorder.Body.String() != "console.log(1)" {
+		t.Fatalf("unexpected asset response: code=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+	if cache := recorder.Header().Get("Cache-Control"); !strings.Contains(cache, "immutable") {
+		t.Fatalf("asset is not cached long term: %q", cache)
+	}
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/favicon.ico", nil))
+	if recorder.Code != http.StatusOK || recorder.Body.String() != "icon" {
+		t.Fatalf("unexpected favicon response: code=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/assets/missing.js", nil))
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("missing asset returned %d", recorder.Code)
+	}
+}
+
+func TestSPAContentSecurityPolicyAllowsShellScript(t *testing.T) {
+	handler := testServer(t).routes(spaTestFiles())
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
+	sum := sha256.Sum256([]byte("self.boot=1"))
+	hash := "'sha256-" + base64.StdEncoding.EncodeToString(sum[:]) + "'"
+	policy := recorder.Header().Get("Content-Security-Policy")
+	if !strings.Contains(policy, hash) || strings.Contains(policy, "unsafe-inline") {
+		t.Fatalf("unexpected policy: %q", policy)
+	}
+}
+
+func TestInlineScriptHashesMatchBrowserParsing(t *testing.T) {
+	hashes := inlineScriptHashes([]byte("<script>a\x00b\r\nc</script><script src=\"/x.js\"></script><script></script>"))
+	sum := sha256.Sum256([]byte("a�b\nc"))
+	want := "sha256-" + base64.StdEncoding.EncodeToString(sum[:])
+	if len(hashes) != 1 || hashes[0] != want {
+		t.Fatalf("unexpected hashes: %v, want %s", hashes, want)
+	}
+}
+
+func TestSPAFallbackPageWithoutBuild(t *testing.T) {
+	handler := testServer(t).routes(fstest.MapFS{".gitkeep": {Data: []byte("")}})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/room", nil))
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "build:web") {
+		t.Fatalf("unexpected fallback response: code=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestSPADoesNotShadowServerRoutes(t *testing.T) {
+	handler := testServer(t).routes(spaTestFiles())
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/healthz", nil))
+	if recorder.Code != http.StatusOK || recorder.Body.String() != `{"status":"ok"}` {
+		t.Fatalf("unexpected health response: code=%d body=%q", recorder.Code, recorder.Body.String())
+	}
+	httpServer := httptest.NewServer(handler)
+	t.Cleanup(httpServer.Close)
+	ws := dialSignal(t, "ws"+strings.TrimPrefix(httpServer.URL, "http")+"/ws")
+	sendAndExpect(t, ws, signalMessage{Type: "join", Role: "viewer", Room: "spa-route-room"}, "joined")
 }

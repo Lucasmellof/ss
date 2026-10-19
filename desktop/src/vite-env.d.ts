@@ -26,7 +26,7 @@ declare global {
 	};
 	type DesktopPlatform = "win32" | "linux" | "darwin" | "freebsd" | "unknown";
 	interface Window {
-		screenShare: {
+		screenShare?: {
 			platform: DesktopPlatform;
 			sources(): Promise<CaptureSource[]>;
 			setCaptureSource(sourceId: string): Promise<boolean>;

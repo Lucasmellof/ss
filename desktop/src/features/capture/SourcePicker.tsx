@@ -16,6 +16,7 @@ export function SourcePicker({
 	audioMode,
 	includeDiscordAudio,
 	nativePicker,
+	browserPicker = false,
 	loading,
 	starting,
 	onType,
@@ -62,7 +63,12 @@ export function SourcePicker({
 					</button>
 				</div>
 
-				<div className="mb-2.5 flex items-center justify-between gap-[15px] text-[11px] text-app-muted">
+				<div
+					className={cn(
+						"mb-2.5 flex items-center justify-between gap-[15px] text-[11px] text-app-muted",
+						browserPicker && "hidden",
+					)}
+				>
 					<span>{loading ? "Buscando telas e janelas..." : `${sources.length} fonte(s) disponível(is)`}</span>
 					<button
 						className="inline-flex items-center gap-1.5 border-0 bg-transparent text-[11px] font-extrabold text-app-accent hover:text-[#b0efd5] disabled:cursor-not-allowed disabled:opacity-50"
@@ -75,10 +81,16 @@ export function SourcePicker({
 				</div>
 				{nativePicker && (
 					<p className="mb-2.5 rounded-lg border border-app-accent/20 bg-app-accent/8 px-3 py-2 text-[11px] leading-5 text-app-muted">
-						No Linux, o PipeWire pode abrir o seletor de tela do sistema ao iniciar a captura.
+						{browserPicker
+							? "O navegador vai pedir a tela na próxima etapa"
+							: "No Linux, o PipeWire pode abrir o seletor de tela do sistema ao iniciar a captura."}
 					</p>
 				)}
-				<div className="mb-2.5 flex gap-1.5 rounded-[9px] bg-[#0b0e12] p-1" role="tablist" aria-label="Tipo de fonte">
+				<div
+					className={cn("mb-2.5 flex gap-1.5 rounded-[9px] bg-[#0b0e12] p-1", browserPicker && "hidden")}
+					role="tablist"
+					aria-label="Tipo de fonte"
+				>
 					<button
 						className={cn(
 							"inline-flex flex-1 items-center justify-center gap-1.5 rounded-[7px] border border-transparent px-2.5 py-2 text-[11px] font-extrabold text-app-muted",
@@ -106,7 +118,7 @@ export function SourcePicker({
 						<span className="text-[10px] text-[#697681]">{windowCount}</span>
 					</button>
 				</div>
-				<div className="grid max-h-[390px] grid-cols-1 gap-2.5 overflow-auto p-0.5 sm:grid-cols-2">
+				<div className={cn("grid max-h-[390px] grid-cols-1 gap-2.5 overflow-auto p-0.5 sm:grid-cols-2", browserPicker && "hidden")}>
 					{loading ? (
 						<div className="col-span-full grid min-h-[190px] place-items-center content-center gap-2.5 p-[30px_10px] text-center text-xs text-app-muted">
 							<RefreshCw className="size-6 animate-spin text-app-accent" />
@@ -190,7 +202,7 @@ export function SourcePicker({
 							</select>
 						</label>
 					</div>
-					{audioMode === "system" && sourceType === "screen" && (
+					{audioMode === "system" && sourceType === "screen" && !browserPicker && (
 						<label className="mt-3 flex cursor-pointer items-center gap-2 text-xs font-bold text-app-muted">
 							<input
 								className="size-4 accent-app-accent"
