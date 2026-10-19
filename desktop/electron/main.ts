@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, net, protocol, session, shell } from "electron";
+import { app, BrowserWindow, desktopCapturer, ipcMain, Menu, net, protocol, session, shell, systemPreferences } from "electron";
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -66,9 +66,16 @@ if (process.platform === "linux") {
 	app.commandLine.appendSwitch("enable-features", "WebRTCPipeWireCapturer");
 }
 
+if (process.platform === "darwin") {
+	app.commandLine.appendSwitch("enable-features", "MacLoopbackAudioForScreenShare,MacSckSystemAudioLoopbackOverride");
+}
+
+const SCREEN_PERMISSION_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture";
+
 let activeAudioProcess: ChildProcessWithoutNullStreams | null = null;
 let captureSources: Electron.DesktopCapturerSource[] = [];
 let selectedCaptureSourceID: string | undefined;
+let selectedCaptureAudio = false;
 
 function getAudioLoopbackPath(): string | undefined {
 	if (process.platform !== "win32") return undefined;
@@ -259,19 +266,22 @@ app.whenReady().then(() => {
 		callback({ requestHeaders: { ...details.requestHeaders, Origin: signalingOrigin } });
 	});
 
-	if (process.platform === "linux") {
-		session.defaultSession.setDisplayMediaRequestHandler(async (_request, callback) => {
+	if (process.platform === "linux" || process.platform === "darwin") {
+		session.defaultSession.setDisplayMediaRequestHandler(async (request, callback) => {
+			const withAudio = process.platform === "darwin" && selectedCaptureAudio && request.audioRequested;
+			const streams = (video: Electron.DesktopCapturerSource): Electron.Streams =>
+				withAudio ? { video, audio: "loopback" } : { video };
 			const selected = captureSources.find((source) => source.id === selectedCaptureSourceID);
 			const source = selected ?? captureSources[0];
 			if (source) {
-				callback({ video: source });
+				callback(streams(source));
 				return;
 			}
 
 			try {
 				const items = await getDesktopCapturerSources();
 				const fallback = items.find((item) => item.id === selectedCaptureSourceID) ?? items[0];
-				callback(fallback ? { video: fallback } : {});
+				callback(fallback ? streams(fallback) : {});
 			} catch (error) {
 				console.error("Não foi possível autorizar a captura PipeWire:", error);
 				callback({});
@@ -280,8 +290,17 @@ app.whenReady().then(() => {
 	}
 
 	ipcMain.handle("capture:sources", sources);
-	ipcMain.handle("capture:set-source", (_event, sourceId: string) => {
+	ipcMain.handle("capture:set-source", (_event, sourceId: string, audio?: boolean) => {
 		selectedCaptureSourceID = sourceId;
+		selectedCaptureAudio = audio === true;
+		return true;
+	});
+	ipcMain.handle("capture:permission", () =>
+		process.platform === "darwin" ? systemPreferences.getMediaAccessStatus("screen") : "granted",
+	);
+	ipcMain.handle("capture:open-permission-settings", async () => {
+		if (process.platform !== "darwin") return false;
+		await shell.openExternal(SCREEN_PERMISSION_SETTINGS_URL);
 		return true;
 	});
 	registerUpdater();
@@ -300,6 +319,12 @@ app.whenReady().then(() => {
 		stopAudioProcess();
 		return true;
 	});
+
+	if (process.platform === "darwin") {
+		Menu.setApplicationMenu(
+			Menu.buildFromTemplate([{ role: "appMenu" }, { role: "editMenu" }, { role: "viewMenu" }, { role: "windowMenu" }]),
+		);
+	}
 
 	createWindow();
 	app.on("activate", () => {

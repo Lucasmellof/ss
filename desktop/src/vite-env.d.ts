@@ -24,12 +24,15 @@ declare global {
 		notes: string;
 		status: "new" | "current" | "old";
 	};
+	type ScreenPermissionStatus = "not-determined" | "granted" | "denied" | "restricted" | "unknown";
 	type DesktopPlatform = "win32" | "linux" | "darwin" | "freebsd" | "unknown";
 	interface Window {
 		screenShare: {
 			platform: DesktopPlatform;
 			sources(): Promise<CaptureSource[]>;
-			setCaptureSource(sourceId: string): Promise<boolean>;
+			setCaptureSource(sourceId: string, audio?: boolean): Promise<boolean>;
+			screenPermission(): Promise<ScreenPermissionStatus>;
+			openScreenPermissionSettings(): Promise<boolean>;
 			hostname(): Promise<string>;
 			startAudioLoopback(sourceId: string): Promise<boolean>;
 			stopAudioLoopback(): Promise<void>;
