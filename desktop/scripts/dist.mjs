@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 
-const target = process.platform === "win32" ? "dist:win" : process.platform === "linux" ? "dist:linux" : undefined;
+const targets = { win32: "dist:win", linux: "dist:linux", darwin: "dist:mac" };
+const target = targets[process.platform];
 
 if (!target) {
 	console.error(`Distribuição não configurada para a plataforma ${process.platform}.`);

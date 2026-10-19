@@ -3,8 +3,8 @@
 	"version": "0.2.7",
 	"private": true,
 	"description": "Cliente desktop para compartilhamento de tela e áudio.",
-	"author": "Screen Share",
 	"homepage": "https://github.com/Lucasmellof/ss",
+	"author": "Screen Share",
 	"type": "module",
 	"main": "dist-electron/main.js",
 	"scripts": {
@@ -14,13 +14,14 @@
 		"build": "bun run build:ui && bun run build:electron",
 		"build:audio": "bun scripts/build-audio.mjs",
 		"build:audio:win": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-audio-loopback.ps1",
-		"lint": "oxlint src electron vite.config.ts electrobun.config.ts",
-		"lint:fix": "oxlint --fix src electron vite.config.ts electrobun.config.ts",
-		"format": "oxfmt --write \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" \"scripts/*.mjs\" vite.config.ts electrobun.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
-		"format:check": "oxfmt --check \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" \"scripts/*.mjs\" vite.config.ts electrobun.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
+		"lint": "oxlint src electron vite.config.ts",
+		"lint:fix": "oxlint --fix src electron vite.config.ts",
+		"format": "oxfmt --write \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" \"scripts/*.mjs\" vite.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
+		"format:check": "oxfmt --check \"src/**/*.ts\" \"src/**/*.tsx\" \"electron/**/*.ts\" \"electron/**/*.cts\" \"scripts/*.mjs\" vite.config.ts package.json tsconfig.json tsconfig.electron.json components.json",
 		"dist": "bun scripts/dist.mjs",
 		"dist:win": "bun run build:audio:win && bun run build && electron-builder --win portable nsis --publish never",
 		"dist:linux": "bun run build && electron-builder --linux AppImage deb --publish never",
+		"dist:mac": "bun run build && electron-builder --mac dmg zip --universal --publish never",
 		"sign": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign-windows.ps1",
 		"dist:signed": "bun run dist:win && bun run sign"
 	},
@@ -119,6 +120,35 @@
 			"maintainer": "Screen Share <Lucasmellof@users.noreply.github.com>",
 			"artifactName": "ScreenShare-${version}-${arch}.${ext}"
 		},
+		"mac": {
+			"icon": "resources/icon.png",
+			"category": "public.app-category.video",
+			"target": [
+				{
+					"target": "dmg",
+					"arch": [
+						"universal"
+					]
+				},
+				{
+					"target": "zip",
+					"arch": [
+						"universal"
+					]
+				}
+			],
+			"hardenedRuntime": true,
+			"gatekeeperAssess": false,
+			"entitlements": "resources/entitlements.mac.plist",
+			"entitlementsInherit": "resources/entitlements.mac.plist",
+			"extendInfo": {
+				"NSMicrophoneUsageDescription": "O Screen Share usa o microfone quando você escolhe transmitir áudio.",
+				"NSCameraUsageDescription": "O Screen Share pode acessar a câmera quando você escolhe compartilhá-la.",
+				"NSScreenCaptureUsageDescription": "O Screen Share precisa gravar a tela para compartilhar telas e janelas.",
+				"NSAudioCaptureUsageDescription": "O Screen Share captura o áudio do sistema quando você escolhe transmitir o áudio do Mac."
+			},
+			"artifactName": "ScreenShare-${version}-${arch}.${ext}"
+		},
 		"portable": {
 			"artifactName": "ScreenShare-${version}-portable.exe"
 		},
@@ -129,6 +159,9 @@
 			"createDesktopShortcut": true,
 			"createStartMenuShortcut": true,
 			"artifactName": "ScreenShare-Setup-${version}.exe"
+		},
+		"dmg": {
+			"artifactName": "ScreenShare-${version}-${arch}.${ext}"
 		},
 		"files": [
 			"dist/**",

@@ -61,8 +61,42 @@ jobs:
             desktop/artifacts/electron-builder-release/ScreenShare-*.deb
           if-no-files-found: error
 
+  build-macos:
+    needs: check-version
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - name: Configure code signing
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+        run: |
+          if [ -z "$CSC_LINK" ]; then
+            echo "CSC_IDENTITY_AUTO_DISCOVERY=false" >> "$GITHUB_ENV"
+            echo "No signing certificate configured; building an unsigned app."
+          fi
+      - run: bun run dist:mac
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            desktop/artifacts/electron-builder-release/ScreenShare-*.dmg
+            desktop/artifacts/electron-builder-release/ScreenShare-*.zip
+            desktop/artifacts/electron-builder-release/latest-mac.yml
+          if-no-files-found: error
+
   release:
-    needs: [build-windows, build-linux]
+    needs: [build-windows, build-linux, build-macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
