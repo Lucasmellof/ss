@@ -123,14 +123,23 @@ func isLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-func securityHeaders(next http.Handler) http.Handler {
+func securityHeaders(next http.Handler, scriptHashes ...string) http.Handler {
+	policy := contentSecurityPolicy(scriptHashes)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
-		w.Header().Set("Content-Security-Policy", "default-src 'self'; connect-src 'self' ws: wss:; media-src 'self' blob:; style-src 'self'; script-src 'self'; frame-ancestors 'none'")
+		w.Header().Set("Content-Security-Policy", policy)
 		next.ServeHTTP(w, r)
 	})
+}
+
+func contentSecurityPolicy(scriptHashes []string) string {
+	scriptSrc := "script-src 'self'"
+	for _, hash := range scriptHashes {
+		scriptSrc += " '" + hash + "'"
+	}
+	return "default-src 'self'; connect-src 'self' ws: wss:; media-src 'self' blob:; img-src 'self' data: blob:; style-src 'self'; " + scriptSrc + "; frame-ancestors 'none'"
 }
 
 func healthHandler(w http.ResponseWriter, _ *http.Request) {

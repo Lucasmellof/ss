@@ -1,0 +1,10 @@
+.git
+/dist/
+/desktop/node_modules/
+/desktop/dist/
+/desktop/dist-web/
+/desktop/dist-electron/
+/desktop/artifacts/
+/desktop/build/
+/web/dist/*
+!/web/dist/.gitkeep

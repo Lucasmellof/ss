@@ -13,9 +13,12 @@
 # Desktop dependencies and generated output
 /desktop/node_modules/
 /desktop/dist/
+/desktop/dist-web/
 /desktop/dist-electron/
 /desktop/artifacts/
 /desktop/build/
+/web/dist/*
+!/web/dist/.gitkeep
 
 # Logs, installers and operating-system files
 *.log
