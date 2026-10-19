@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
 import { RoomClient, type Member, type RoomStream, type StreamOwner } from "@/lib/room";
 import { SIGNALING_SERVER } from "@/lib/config";
+import { desktop } from "@/lib/platform";
 import { linkedRoom } from "@/lib/room-link";
 import { storedValue } from "@/lib/storage";
 
@@ -206,7 +207,6 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 	});
 
 	useEffect(() => {
-		const desktop = window.screenShare;
 		if (!desktop) return undefined;
 		void desktop.takePendingRoom().then((linkedRoom) => {
 			if (linkedRoom) openLinkedRoomRef.current(linkedRoom);

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { desktop } from "@/lib/platform";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type Changes = { status: "loading" } | { status: "ready"; items: string[] } | { status: "error"; message: string };
@@ -12,19 +13,23 @@ export function ChangelogDialog({ entry, onClose }: { entry: ChangelogEntry | un
 	const [changes, setChanges] = useState<Changes>({ status: "loading" });
 
 	useEffect(() => {
-		if (!entry?.previousTag) {
+		if (!entry?.previousTag || !desktop) {
 			setChanges({ status: "ready", items: [] });
 			return;
 		}
 		let active = true;
 		setChanges({ status: "loading" });
-		window.screenShare
+		desktop
 			.releaseChanges(entry.tag, entry.previousTag)
 			.then((items) => {
 				if (active) setChanges({ status: "ready", items });
 			})
 			.catch((cause: unknown) => {
-				if (active) setChanges({ status: "error", message: cause instanceof Error ? cause.message : "Não foi possível carregar as mudanças" });
+				if (active)
+					setChanges({
+						status: "error",
+						message: cause instanceof Error ? cause.message : "Não foi possível carregar as mudanças",
+					});
 			});
 		return () => {
 			active = false;
@@ -39,7 +44,9 @@ export function ChangelogDialog({ entry, onClose }: { entry: ChangelogEntry | un
 			<DialogContent className="max-h-[80vh] overflow-y-auto border-app-line bg-app-panel text-app-text">
 				<DialogHeader>
 					<DialogTitle>Novidades da versão {entry?.version}</DialogTitle>
-					<DialogDescription className="text-app-muted">{date ? `Publicada em ${date}` : "Mudanças desta versão"}</DialogDescription>
+					<DialogDescription className="text-app-muted">
+						{date ? `Publicada em ${date}` : "Mudanças desta versão"}
+					</DialogDescription>
 				</DialogHeader>
 				{entry?.notes ? <p className="text-sm whitespace-pre-wrap text-app-text">{entry.notes}</p> : null}
 				{changes.status === "loading" ? <p className="text-sm text-app-muted">Carregando mudanças...</p> : null}

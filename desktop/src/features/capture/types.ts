@@ -29,6 +29,7 @@ export type SourcePickerProps = {
 	audioMode: AudioMode;
 	includeDiscordAudio: boolean;
 	nativePicker: boolean;
+	browserPicker?: boolean;
 	loading: boolean;
 	starting: boolean;
 	onType: (type: SourceType) => void;

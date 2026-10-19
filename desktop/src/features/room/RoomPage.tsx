@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { SourcePicker } from "@/features/capture/SourcePicker";
-import { buildRoomLink } from "@/lib/room-link";
+import { isDesktop, platform } from "@/lib/platform";
+import { buildRoomLink, desktopRoomLink } from "@/lib/room-link";
 import { RoomView } from "./RoomView";
 import { useRoomApp } from "./RoomSessionProvider";
 import { useRoomPing } from "./RoomPingProvider";
@@ -43,6 +44,7 @@ export function RoomPage() {
 				onStageZoom={stage.onStageZoom}
 				onPin={stage.onPin}
 				linkCopied={linkCopied}
+				desktopLink={desktopRoomLink(session.room)}
 				onCopyLink={async () => {
 					const link = buildRoomLink(session.room);
 					try {
@@ -71,7 +73,8 @@ export function RoomPage() {
 					resolution={capture.resolution}
 					audioMode={capture.audioMode}
 					includeDiscordAudio={capture.includeDiscordAudio}
-					nativePicker={window.screenShare.platform === "linux"}
+					nativePicker={platform === "linux" || !isDesktop}
+					browserPicker={!isDesktop}
 					loading={capture.loadingSources}
 					starting={capture.startingShare}
 					onType={capture.selectSourceType}

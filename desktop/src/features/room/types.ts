@@ -42,6 +42,7 @@ export type RoomViewProps = {
 	stageZoom: number;
 	onPin: (id: string) => void;
 	linkCopied: boolean;
+	desktopLink?: string;
 	onCopyLink: () => void;
 	onShare: () => void;
 	onStopShare: () => void;

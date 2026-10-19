@@ -4,6 +4,7 @@ import {
 	Check,
 	Copy,
 	Expand,
+	ExternalLink,
 	Eye,
 	EyeOff,
 	Grid2X2,
@@ -55,6 +56,7 @@ export function RoomView({
 	stageZoom,
 	onPin,
 	linkCopied,
+	desktopLink,
 	onCopyLink,
 	onShare,
 	onStopShare,
@@ -188,6 +190,14 @@ export function RoomView({
 						{linkCopied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
 						{linkCopied ? "Link copiado" : "Copiar link"}
 					</button>
+					{desktopLink && (
+						<a
+							className="inline-flex items-center gap-1.5 rounded-[7px] border border-[#282d33] bg-[#111317] px-2.5 py-1.5 text-[11px] font-extrabold text-[#c8d0d6] hover:border-[#49535d] hover:bg-[#1a1e23] max-sm:hidden"
+							href={desktopLink}
+						>
+							<ExternalLink className="size-3.5" /> Abrir no app desktop
+						</a>
+					)}
 					<span
 						className={cn(
 							"inline-flex items-center gap-1 text-[10px]",
@@ -227,7 +237,8 @@ export function RoomView({
 						}}
 						title="Escolher quais transmissões assistir"
 					>
-						<Monitor className="size-3.5" /> {tiles.filter((tile) => !tile.local).length}/{tiles.filter((tile) => !tile.local).length + hiddenTiles.length}
+						<Monitor className="size-3.5" /> {tiles.filter((tile) => !tile.local).length}/
+						{tiles.filter((tile) => !tile.local).length + hiddenTiles.length}
 					</button>
 					<button
 						className="inline-flex items-center gap-1.5 rounded-[7px] border border-[#282d33] bg-[#111317] px-2.5 py-1.5 text-[11px] font-extrabold text-[#c8d0d6] hover:border-[#49535d] hover:bg-[#1a1e23]"
@@ -244,42 +255,47 @@ export function RoomView({
 					<div className="absolute top-11 right-0 z-30 w-[270px] rounded-[10px] border border-[#2a3037] bg-[#15181c] p-2.5 shadow-[0_18px_60px_rgba(0,0,0,.55)]">
 						<div className="flex items-center justify-between border-b border-[#272d34] px-1.5 pb-2 text-xs">
 							<strong>Transmissões</strong>
-							<span className="text-[11px] text-app-muted">{tiles.filter((tile) => !tile.local).length + hiddenTiles.length}</span>
+							<span className="text-[11px] text-app-muted">
+								{tiles.filter((tile) => !tile.local).length + hiddenTiles.length}
+							</span>
 						</div>
 						{tiles.filter((tile) => !tile.local).length + hiddenTiles.length === 0 ? (
 							<p className="my-1 px-1.5 text-xs text-app-muted">Nenhuma transmissão no momento.</p>
 						) : (
-							[...tiles.filter((tile) => !tile.local).map((tile) => ({ tile, watching: true })), ...hiddenTiles.map((tile) => ({ tile, watching: false }))].map(
-								({ tile, watching }) => (
-									<div
-										className="flex items-center gap-2 rounded-lg px-1 py-1.5 text-xs text-[#d7dfe5] hover:bg-app-panel-raised"
-										key={tile.id}
-									>
-										<Monitor className={cn("size-3.5 shrink-0", watching ? "text-app-accent" : "text-[#7f8992]")} />
-										<span className={cn("overflow-hidden text-ellipsis whitespace-nowrap", !watching && "text-[#7f8992]")}>{tile.name}</span>
-										<div className="ml-auto flex items-center gap-1">
-											{watching && (
-												<button
-													className="rounded-[6px] border border-[#282d33] px-1.5 py-1 text-[10px] font-extrabold hover:border-[#49535d]"
-													type="button"
-													onClick={() => onPin(tile.id)}
-												>
-													Ver
-												</button>
-											)}
+							[
+								...tiles.filter((tile) => !tile.local).map((tile) => ({ tile, watching: true })),
+								...hiddenTiles.map((tile) => ({ tile, watching: false })),
+							].map(({ tile, watching }) => (
+								<div
+									className="flex items-center gap-2 rounded-lg px-1 py-1.5 text-xs text-[#d7dfe5] hover:bg-app-panel-raised"
+									key={tile.id}
+								>
+									<Monitor className={cn("size-3.5 shrink-0", watching ? "text-app-accent" : "text-[#7f8992]")} />
+									<span className={cn("overflow-hidden text-ellipsis whitespace-nowrap", !watching && "text-[#7f8992]")}>
+										{tile.name}
+									</span>
+									<div className="ml-auto flex items-center gap-1">
+										{watching && (
 											<button
-												className="grid size-6 place-items-center rounded-[6px] border border-[#282d33] hover:border-[#49535d]"
+												className="rounded-[6px] border border-[#282d33] px-1.5 py-1 text-[10px] font-extrabold hover:border-[#49535d]"
 												type="button"
-												onClick={() => (watching ? onHideTile(tile.id) : onShowTile(tile.id))}
-												title={watching ? "Parar de assistir" : "Voltar a assistir"}
-												aria-label={watching ? `Parar de assistir ${tile.name}` : `Voltar a assistir ${tile.name}`}
+												onClick={() => onPin(tile.id)}
 											>
-												{watching ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+												Ver
 											</button>
-										</div>
+										)}
+										<button
+											className="grid size-6 place-items-center rounded-[6px] border border-[#282d33] hover:border-[#49535d]"
+											type="button"
+											onClick={() => (watching ? onHideTile(tile.id) : onShowTile(tile.id))}
+											title={watching ? "Parar de assistir" : "Voltar a assistir"}
+											aria-label={watching ? `Parar de assistir ${tile.name}` : `Voltar a assistir ${tile.name}`}
+										>
+											{watching ? <EyeOff className="size-3" /> : <Eye className="size-3" />}
+										</button>
 									</div>
-								),
-							)
+								</div>
+							))
 						)}
 					</div>
 				)}
@@ -342,12 +358,12 @@ export function RoomView({
 						) : visibleMembers.length === 1 && tiles.length === 0 ? (
 							<div className="flex h-full min-h-0 w-full items-center justify-center">
 								<ParticipantCard
-										member={visibleMembers[0]}
-										self={visibleMembers[0].name === selfName}
-										fill
-										loading={loadingMemberIDs.includes(visibleMembers[0].id)}
-										onWatch={watchHandler(visibleMembers[0].id)}
-									/>
+									member={visibleMembers[0]}
+									self={visibleMembers[0].name === selfName}
+									fill
+									loading={loadingMemberIDs.includes(visibleMembers[0].id)}
+									onWatch={watchHandler(visibleMembers[0].id)}
+								/>
 							</div>
 						) : cardCount > 0 ? (
 							<div className="grid h-full min-h-0 w-full gap-2.5 p-0" style={gridStyle}>
@@ -357,7 +373,7 @@ export function RoomView({
 										member={member}
 										self={member.name === selfName}
 										fill={cardCount === 1}
-							loading={loadingMemberIDs.includes(member.id)}
+										loading={loadingMemberIDs.includes(member.id)}
 										onWatch={watchHandler(member.id)}
 									/>
 								))}

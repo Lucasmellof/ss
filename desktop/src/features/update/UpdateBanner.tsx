@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { desktop } from "@/lib/platform";
 import { ChangelogDialog, formatReleaseDate } from "./ChangelogDialog";
 
 type Progress = { received: number; total: number };
@@ -21,7 +22,7 @@ export function UpdateBanner() {
 	const [pinned, setPinned] = useState(false);
 
 	useEffect(() => {
-		const api = window.screenShare;
+		const api = desktop;
 		if (!api?.checkForUpdate) {
 			setHidden(true);
 			return;
@@ -33,7 +34,8 @@ export function UpdateBanner() {
 				if (active) setCheck(result);
 			})
 			.catch((cause: unknown) => {
-				if (active) setCheck({ status: "error", message: cause instanceof Error ? cause.message : "Falha ao verificar atualização" });
+				if (active)
+					setCheck({ status: "error", message: cause instanceof Error ? cause.message : "Falha ao verificar atualização" });
 			})
 			.then(() => api.changelog())
 			.then((entries) => {
@@ -59,7 +61,8 @@ export function UpdateBanner() {
 		setError("");
 		setDownloading(true);
 		try {
-			await window.screenShare.downloadUpdate();
+			if (!desktop) throw new Error("Atualização disponível apenas no app desktop");
+			await desktop.downloadUpdate();
 		} catch (cause) {
 			setDownloading(false);
 			setProgress(undefined);
@@ -79,7 +82,12 @@ export function UpdateBanner() {
 	}
 
 	const closeButton = (
-		<button type="button" className="absolute top-3 right-3 rounded-sm text-app-muted hover:text-app-text" aria-label="Fechar" onClick={() => setHidden(true)}>
+		<button
+			type="button"
+			className="absolute top-3 right-3 rounded-sm text-app-muted hover:text-app-text"
+			aria-label="Fechar"
+			onClick={() => setHidden(true)}
+		>
 			<XIcon className="size-4" />
 		</button>
 	);
@@ -101,7 +109,9 @@ export function UpdateBanner() {
 							>
 								<span>v{entry.version}</span>
 								<span className="flex items-center gap-2 text-xs text-app-muted">
-									{STATUS_LABEL[entry.status] ? <span className="text-app-accent">{STATUS_LABEL[entry.status]}</span> : null}
+									{STATUS_LABEL[entry.status] ? (
+										<span className="text-app-accent">{STATUS_LABEL[entry.status]}</span>
+									) : null}
 									{formatReleaseDate(entry.publishedAt)}
 								</span>
 							</button>
@@ -141,7 +151,8 @@ export function UpdateBanner() {
 			<p className="mt-1 text-xs text-app-muted">Você está na versão {update.currentVersion}.</p>
 			{downloading ? (
 				<p className="mt-3 text-xs text-app-muted">
-					{percent === undefined ? "Baixando..." : `Baixando... ${percent}%`} {update.autoInstall ? "O aplicativo será reiniciado ao terminar." : "O aplicativo será fechado ao terminar."}
+					{percent === undefined ? "Baixando..." : `Baixando... ${percent}%`}{" "}
+					{update.autoInstall ? "O aplicativo será reiniciado ao terminar." : "O aplicativo será fechado ao terminar."}
 				</p>
 			) : (
 				<div className="mt-3 flex gap-2">
