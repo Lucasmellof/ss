@@ -45,6 +45,7 @@ export type RoomViewProps = {
 	onCopyLink: () => void;
 	onShare: () => void;
 	onStopShare: () => void;
+	onEditShare: () => void;
 	onLeave: () => void;
 	onToggleSounds: () => void;
 	onStageLayout: (layout: StageLayout) => void;

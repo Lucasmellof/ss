@@ -169,28 +169,7 @@ export class RoomClient {
 		stream.getTracks().forEach((track) => {
 			roomDebug("publisher local track", { id: track.id, kind: track.kind, readyState: track.readyState, enabled: track.enabled });
 			const sender = pc.addTrack(track, stream);
-			if (track.kind === "audio") {
-				track.contentHint = "music";
-				const parameters = sender.getParameters();
-				if (parameters.encodings?.length) {
-					parameters.encodings[0].maxBitrate = 256_000;
-					void sender.setParameters(parameters).catch(() => undefined);
-				}
-				return;
-			}
-			if (track.kind !== "video") return;
-			const parameters = sender.getParameters();
-			if (!parameters.encodings?.length) return;
-			parameters.encodings[0].maxFramerate = frameRate;
-			parameters.encodings[0].maxBitrate = maxBitrate;
-			parameters.degradationPreference = "maintain-resolution";
-			roomDebug("publisher sender parameters", {
-				trackID: track.id,
-				frameRate,
-				maxBitrate,
-				degradationPreference: parameters.degradationPreference,
-			});
-			void sender.setParameters(parameters).catch((error) => roomDebugError("publisher sender parameters failed", error));
+			void this.configureSender(sender, track, frameRate, maxBitrate);
 		});
 		pc.onconnectionstatechange = () => {
 			if (this.publisher !== session) return;
@@ -242,6 +221,56 @@ export class RoomClient {
 		} finally {
 			window.clearTimeout(timeout);
 		}
+	}
+
+	/**
+	 * Swaps the tracks of the active publisher without renegotiating, so viewers keep the same stream.
+	 * Returns false when there is no publisher or the new stream needs a sender that does not exist yet
+	 * (e.g. audio added to a video-only transmission); the caller should republish in that case.
+	 */
+	async replaceTracks(stream: MediaStream, frameRate = 30, maxBitrate = 10_000_000) {
+		const session = this.publisher;
+		if (!session) return false;
+		const transceivers = session.pc.getTransceivers();
+		const senderFor = (kind: string) => transceivers.find((item) => item.receiver.track.kind === kind)?.sender;
+		const videoTrack = stream.getVideoTracks()[0];
+		const audioTrack = stream.getAudioTracks()[0];
+		const videoSender = senderFor("video");
+		const audioSender = senderFor("audio");
+		if (!videoTrack || !videoSender || (audioTrack && !audioSender)) return false;
+
+		roomDebug("publisher replace tracks", { videoTrackID: videoTrack.id, audioTrackID: audioTrack?.id, frameRate, maxBitrate });
+		await videoSender.replaceTrack(videoTrack);
+		if (audioSender) await audioSender.replaceTrack(audioTrack ?? null);
+		if (this.publisher !== session) return false;
+		await this.configureSender(videoSender, videoTrack, frameRate, maxBitrate);
+		if (audioSender && audioTrack) await this.configureSender(audioSender, audioTrack, frameRate, maxBitrate);
+		return true;
+	}
+
+	private async configureSender(sender: RTCRtpSender, track: MediaStreamTrack, frameRate: number, maxBitrate: number) {
+		if (track.kind === "audio") {
+			track.contentHint = "music";
+			const parameters = sender.getParameters();
+			if (parameters.encodings?.length) {
+				parameters.encodings[0].maxBitrate = 256_000;
+				await sender.setParameters(parameters).catch(() => undefined);
+			}
+			return;
+		}
+		if (track.kind !== "video") return;
+		const parameters = sender.getParameters();
+		if (!parameters.encodings?.length) return;
+		parameters.encodings[0].maxFramerate = frameRate;
+		parameters.encodings[0].maxBitrate = maxBitrate;
+		parameters.degradationPreference = "maintain-resolution";
+		roomDebug("publisher sender parameters", {
+			trackID: track.id,
+			frameRate,
+			maxBitrate,
+			degradationPreference: parameters.degradationPreference,
+		});
+		await sender.setParameters(parameters).catch((error) => roomDebugError("publisher sender parameters failed", error));
 	}
 
 	stopPublish() {

@@ -55,6 +55,7 @@ export function RoomPage() {
 				}}
 				onShare={() => void capture.loadSources()}
 				onStopShare={capture.stopSharing}
+				onEditShare={() => void capture.loadSources()}
 				onToggleSounds={sounds.toggleSounds}
 				onLeave={() => {
 					leave();
@@ -72,6 +73,7 @@ export function RoomPage() {
 					audioMode={capture.audioMode}
 					includeDiscordAudio={capture.includeDiscordAudio}
 					nativePicker={window.screenShare.platform === "linux"}
+					live={capture.sharing}
 					loading={capture.loadingSources}
 					starting={capture.startingShare}
 					onType={capture.selectSourceType}
@@ -82,7 +84,7 @@ export function RoomPage() {
 					onIncludeDiscordAudio={capture.setIncludeDiscordAudio}
 					onRefresh={() => void capture.loadSources()}
 					onClose={capture.closePicker}
-					onStart={() => void capture.startSharing()}
+					onStart={() => void (capture.sharing ? capture.updateSharing() : capture.startSharing())}
 				/>
 			)}
 		</>

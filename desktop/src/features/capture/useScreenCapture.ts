@@ -12,6 +12,14 @@ export type ScreenCaptureOptions = {
 	onStatus: (text: string) => void;
 };
 
+type CaptureSettings = {
+	source?: CaptureSource;
+	frameRate: FrameRate;
+	resolution: Resolution;
+	audioMode: AudioMode;
+	includeDiscordAudio: boolean;
+};
+
 const stopTracks = (stream: MediaStream | undefined | null) => {
 	stream?.getTracks().forEach((track) => track.stop());
 };
@@ -97,6 +105,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	const includeDiscordAudioRef = useRef(includeDiscordAudio);
 	const audioContextRef = useRef<AudioContext | null>(null);
 	const audioCleanupRef = useRef<(() => void) | null>(null);
+	const activeSettings = useRef<CaptureSettings | null>(null);
 
 	useEffect(() => {
 		serverRef.current = server;
@@ -162,39 +171,40 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		const stream = localStream.current;
 		localStream.current = null;
 		stopTracks(stream);
+		activeSettings.current = null;
 		setLocal(null);
 		setSharing(false);
 		setStartingShare(false);
 		onStatusRef.current(message);
 	};
 
-	const startSharing = async () => {
-		const source = sourcesRef.current.find((item) => item.id === selectedSourceIDRef.current);
-		const roomClient = client.current;
-		const isLinux = window.screenShare.platform === "linux";
-		if ((!source && !isLinux) || !roomClient) {
-			onStatusRef.current("Selecione uma tela ou janela para compartilhar");
-			return;
+	const readSettings = (): CaptureSettings => ({
+		source: sourcesRef.current.find((item) => item.id === selectedSourceIDRef.current),
+		frameRate: frameRateRef.current,
+		resolution: resolutionRef.current,
+		audioMode: audioModeRef.current,
+		includeDiscordAudio: includeDiscordAudioRef.current,
+	});
+
+	const restoreSettings = (settings: CaptureSettings) => {
+		if (settings.source) {
+			setSelectedSourceID(settings.source.id);
+			setSourceType(settings.source.kind);
 		}
-		const serverValue = serverRef.current;
-		const roomValue = roomRef.current;
-		const frameRateValue = frameRateRef.current;
-		const resolutionValue = resolutionRef.current;
-		const audioModeValue = audioModeRef.current;
-		const includeDiscordAudioValue = includeDiscordAudioRef.current;
-		const maxBitrate = videoBitrate(resolutionValue, frameRateValue);
-		const token = ++captureToken.current;
-		roomDebug("capture start", {
-			sourceID: source?.id ?? "linux:native-picker",
-			sourceType: source?.kind ?? "screen",
-			room: roomValue,
-			frameRate: frameRateValue,
-			resolution: resolutionValue,
-			audioMode: audioModeValue,
-			includeDiscordAudio: includeDiscordAudioValue,
-		});
-		setStartingShare(true);
-		cleanupAudio();
+		setFrameRate(settings.frameRate);
+		setResolution(settings.resolution);
+		setAudioMode(settings.audioMode);
+		setIncludeDiscordAudio(settings.includeDiscordAudio);
+	};
+
+	const captureStream = async ({
+		source,
+		frameRate: frameRateValue,
+		resolution: resolutionValue,
+		audioMode: audioModeValue,
+		includeDiscordAudio: includeDiscordAudioValue,
+	}: CaptureSettings) => {
+		const isLinux = window.screenShare.platform === "linux";
 		let stream: MediaStream | undefined;
 		try {
 			if (source) await window.screenShare.setCaptureSource(source.id);
@@ -389,7 +399,6 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 			}
 			roomDebug("capture stream created", {
 				streamID: stream.id,
-				maxBitrate,
 				tracks: stream.getTracks().map((track) => ({
 					id: track.id,
 					kind: track.kind,
@@ -398,48 +407,84 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 					enabled: track.enabled,
 				})),
 			});
+			return stream;
+		} catch (error) {
+			stopTracks(stream);
+			throw error;
+		}
+	};
+
+	const watchVideoTrack = async (stream: MediaStream, frameRate: FrameRate) => {
+		const videoTrack = stream.getVideoTracks()[0];
+		if (!videoTrack) throw new Error("A fonte não forneceu um vídeo");
+		videoTrack.contentHint = "detail";
+		roomDebug("capture video settings", { settings: videoTrack.getSettings(), contentHint: videoTrack.contentHint });
+		videoTrack.addEventListener(
+			"ended",
+			() => {
+				if (localStream.current === stream) stopSharing("A captura foi encerrada");
+			},
+			{ once: true },
+		);
+		await videoTrack.applyConstraints({ frameRate: { ideal: frameRate, max: frameRate } }).catch(() => undefined);
+		return videoTrack;
+	};
+
+	const sharingStatus = (settings: CaptureSettings) =>
+		`Transmitindo · ${resolutions[settings.resolution].label} · ${settings.frameRate} FPS`;
+
+	const startSharing = async () => {
+		const settings = readSettings();
+		const roomClient = client.current;
+		if ((!settings.source && window.screenShare.platform !== "linux") || !roomClient) {
+			onStatusRef.current("Selecione uma tela ou janela para compartilhar");
+			return;
+		}
+		const serverValue = serverRef.current;
+		const roomValue = roomRef.current;
+		const maxBitrate = videoBitrate(settings.resolution, settings.frameRate);
+		const token = ++captureToken.current;
+		roomDebug("capture start", {
+			sourceID: settings.source?.id ?? "linux:native-picker",
+			sourceType: settings.source?.kind ?? "screen",
+			room: roomValue,
+			frameRate: settings.frameRate,
+			resolution: settings.resolution,
+			audioMode: settings.audioMode,
+			includeDiscordAudio: settings.includeDiscordAudio,
+			maxBitrate,
+		});
+		setStartingShare(true);
+		cleanupAudio();
+		let stream: MediaStream | undefined;
+		try {
+			stream = await captureStream(settings);
 			if (captureToken.current !== token || client.current !== roomClient) {
 				cleanupAudio();
 				stopTracks(stream);
 				return;
 			}
 			localStream.current = stream;
+			activeSettings.current = settings;
 
-			const videoTrack = stream.getVideoTracks()[0];
-			if (!videoTrack) throw new Error("A fonte não forneceu um vídeo");
-			videoTrack.contentHint = "detail";
-			roomDebug("capture video settings", { settings: videoTrack.getSettings(), contentHint: videoTrack.contentHint });
-			videoTrack.addEventListener(
-				"ended",
-				() => {
-					if (localStream.current === stream && captureToken.current === token) {
-						stopSharing("A captura foi encerrada");
-					}
-				},
-				{ once: true },
-			);
+			const videoTrack = await watchVideoTrack(stream, settings.frameRate);
 			setLocal(stream);
 			setSharing(true);
 			setPickerOpen(false);
 			onStatusRef.current("Conectando transmissão...");
-			await videoTrack
-				.applyConstraints({
-					frameRate: { ideal: frameRateValue, max: frameRateValue },
-				})
-				.catch(() => undefined);
 			roomDebug("capture publish begin", {
 				streamID: stream.id,
 				videoTrackID: videoTrack.id,
 				videoReadyState: videoTrack.readyState,
 			});
-			await roomClient.publish(serverValue.trim(), roomValue.trim(), stream, frameRateValue, maxBitrate);
+			await roomClient.publish(serverValue.trim(), roomValue.trim(), stream, settings.frameRate, maxBitrate);
 			roomDebug("capture publish ready", {
 				streamID: stream.id,
 				videoTrackID: videoTrack.id,
 				videoReadyState: videoTrack.readyState,
 			});
 			if (localStream.current === stream && captureToken.current === token && client.current === roomClient) {
-				onStatusRef.current(`Transmitindo · ${resolutions[resolutionValue].label} · ${frameRateValue} FPS`);
+				onStatusRef.current(sharingStatus(settings));
 			}
 		} catch (error) {
 			roomDebugError("capture start failed", error);
@@ -456,6 +501,83 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		} finally {
 			if (captureToken.current === token) setStartingShare(false);
 		}
+	};
+
+	// Applies the picker options to the running transmission. Tracks are swapped in place when possible,
+	// so viewers keep watching; adding audio to a video-only transmission requires a quick republish.
+	const updateSharing = async () => {
+		const previous = localStream.current;
+		const roomClient = client.current;
+		if (!previous || !roomClient) return startSharing();
+		const settings = readSettings();
+		if (!settings.source && window.screenShare.platform !== "linux") {
+			onStatusRef.current("Selecione uma tela ou janela para compartilhar");
+			return;
+		}
+		const maxBitrate = videoBitrate(settings.resolution, settings.frameRate);
+		const token = ++captureToken.current;
+		roomDebug("capture update", {
+			sourceID: settings.source?.id ?? "linux:native-picker",
+			sourceType: settings.source?.kind ?? "screen",
+			frameRate: settings.frameRate,
+			resolution: settings.resolution,
+			audioMode: settings.audioMode,
+			includeDiscordAudio: settings.includeDiscordAudio,
+			maxBitrate,
+		});
+		setStartingShare(true);
+		onStatusRef.current("Alterando transmissão...");
+		cleanupAudio();
+		let stream: MediaStream | undefined;
+		try {
+			stream = await captureStream(settings);
+			if (captureToken.current !== token || client.current !== roomClient) {
+				cleanupAudio();
+				stopTracks(stream);
+				return;
+			}
+			await watchVideoTrack(stream, settings.frameRate);
+			const replaced = await roomClient.replaceTracks(stream, settings.frameRate, maxBitrate);
+			if (captureToken.current !== token || client.current !== roomClient) {
+				cleanupAudio();
+				stopTracks(stream);
+				return;
+			}
+			localStream.current = stream;
+			activeSettings.current = settings;
+			setLocal(stream);
+			setPickerOpen(false);
+			stopTracks(previous);
+			if (!replaced) {
+				onStatusRef.current("Reconectando transmissão...");
+				await roomClient.publish(serverRef.current.trim(), roomRef.current.trim(), stream, settings.frameRate, maxBitrate);
+			}
+			if (localStream.current === stream && captureToken.current === token && client.current === roomClient) {
+				onStatusRef.current(sharingStatus(settings));
+			}
+		} catch (error) {
+			roomDebugError("capture update failed", error);
+			if (captureToken.current !== token || client.current !== roomClient) {
+				stopTracks(stream);
+				return;
+			}
+			const message = error instanceof Error ? error.message : "Não foi possível alterar o compartilhamento";
+			// The previous capture is already gone once the new stream took over, so there is nothing to fall back to.
+			if (stream && localStream.current === stream) {
+				stopSharing(message);
+				return;
+			}
+			stopTracks(stream);
+			onStatusRef.current(message);
+		} finally {
+			if (captureToken.current === token) setStartingShare(false);
+		}
+	};
+
+	const closePicker = () => {
+		setPickerOpen(false);
+		// Discard options edited in the picker that were never applied to the running transmission.
+		if (localStream.current && activeSettings.current) restoreSettings(activeSettings.current);
 	};
 
 	useEffect(
@@ -494,8 +616,9 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		selectSourceType,
 		selectSource,
 		startSharing,
+		updateSharing,
 		stopSharing,
-		closePicker: () => setPickerOpen(false),
+		closePicker,
 		local,
 	};
 }

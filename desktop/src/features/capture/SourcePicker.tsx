@@ -16,6 +16,7 @@ export function SourcePicker({
 	audioMode,
 	includeDiscordAudio,
 	nativePicker,
+	live,
 	loading,
 	starting,
 	onType,
@@ -47,9 +48,11 @@ export function SourcePicker({
 			>
 				<div className="mb-5 flex items-center justify-between gap-[15px]">
 					<div>
-						<p className="mb-1.5 text-[10px] font-extrabold tracking-[.16em] text-app-accent uppercase">Nova transmissão</p>
+						<p className="mb-1.5 text-[10px] font-extrabold tracking-[.16em] text-app-accent uppercase">
+							{live ? "Transmissão ativa" : "Nova transmissão"}
+						</p>
 						<h2 className="text-[22px] font-semibold tracking-[-.04em]" id="source-picker-title">
-							Escolha o que compartilhar
+							{live ? "Alterar transmissão" : "Escolha o que compartilhar"}
 						</h2>
 					</div>
 					<button
@@ -217,8 +220,10 @@ export function SourcePicker({
 						>
 							{starting ? (
 								<>
-									<RefreshCw className="size-4 animate-spin" /> Iniciando...
+									<RefreshCw className="size-4 animate-spin" /> {live ? "Aplicando..." : "Iniciando..."}
 								</>
+							) : live ? (
+								"Aplicar"
 							) : (
 								"Compartilhar"
 							)}
