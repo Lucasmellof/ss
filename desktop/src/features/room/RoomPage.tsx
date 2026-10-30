@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { CameraPicker } from "@/features/capture/CameraPicker";
 import { SourcePicker } from "@/features/capture/SourcePicker";
 import { buildRoomLink } from "@/lib/room-link";
 import { RoomView } from "./RoomView";
@@ -8,7 +9,7 @@ import { useRoomPing } from "./RoomPingProvider";
 
 export function RoomPage() {
 	const navigate = useNavigate();
-	const { session, capture, stage, sounds, tiles, hiddenTiles, hideTile, showTile, leave } = useRoomApp();
+	const { session, capture, camera, stage, sounds, tiles, hiddenTiles, hideTile, showTile, leave } = useRoomApp();
 	const ping = useRoomPing();
 	const [linkCopied, setLinkCopied] = useState(false);
 
@@ -35,6 +36,8 @@ export function RoomPage() {
 				pinned={stage.pinned}
 				sharing={capture.sharing}
 				startingShare={capture.startingShare}
+				cameraLive={camera.live}
+				startingCamera={camera.starting}
 				soundsEnabled={sounds.soundsEnabled}
 				stageLayout={stage.stageLayout}
 				layoutManual={stage.stageLayoutManual}
@@ -56,6 +59,8 @@ export function RoomPage() {
 				onShare={() => void capture.loadSources()}
 				onStopShare={capture.stopSharing}
 				onEditShare={() => void capture.loadSources()}
+				onCamera={camera.openPicker}
+				onStopCamera={() => camera.stopCamera()}
 				onToggleSounds={sounds.toggleSounds}
 				onLeave={() => {
 					leave();
@@ -85,6 +90,25 @@ export function RoomPage() {
 					onRefresh={() => void capture.loadSources()}
 					onClose={capture.closePicker}
 					onStart={() => void (capture.sharing ? capture.updateSharing() : capture.startSharing())}
+				/>
+			)}
+
+			{camera.pickerOpen && (
+				<CameraPicker
+					devices={camera.devices}
+					deviceID={camera.deviceID}
+					resolution={camera.resolution}
+					frameRate={camera.frameRate}
+					preview={camera.preview}
+					live={camera.live}
+					loading={camera.loading}
+					starting={camera.starting}
+					error={camera.error}
+					onDevice={camera.setDeviceID}
+					onResolution={camera.setResolution}
+					onFrameRate={camera.setFrameRate}
+					onClose={camera.closePicker}
+					onStart={() => void camera.startCamera()}
 				/>
 			)}
 		</>

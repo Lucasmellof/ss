@@ -20,6 +20,41 @@ const resolutionBitrates: Record<Resolution, number> = {
 export const videoBitrate = (resolution: Resolution, frameRate: FrameRate) =>
 	Math.min(resolutionBitrates[resolution] * (frameRate === 60 ? 1.25 : 1), 20_000_000);
 
+export type CameraResolution = "480p" | "720p" | "1080p";
+
+export const cameraResolutions: Record<CameraResolution, { label: string; width: number; height: number }> = {
+	"480p": { label: "480p", width: 854, height: 480 },
+	"720p": { label: "720p", width: 1280, height: 720 },
+	"1080p": { label: "1080p", width: 1920, height: 1080 },
+};
+
+// Camera bitrates stay low on purpose: smaller frames leave the encoder and the network faster.
+const cameraBitrates: Record<CameraResolution, number> = {
+	"480p": 1_500_000,
+	"720p": 3_000_000,
+	"1080p": 5_000_000,
+};
+
+export const cameraBitrate = (resolution: CameraResolution, frameRate: FrameRate) =>
+	cameraBitrates[resolution] * (frameRate === 60 ? 1.25 : 1);
+
+export type CameraPickerProps = {
+	devices: MediaDeviceInfo[];
+	deviceID: string;
+	resolution: CameraResolution;
+	frameRate: FrameRate;
+	preview: MediaStream | null;
+	live: boolean;
+	loading: boolean;
+	starting: boolean;
+	error: string;
+	onDevice: (deviceID: string) => void;
+	onResolution: (value: CameraResolution) => void;
+	onFrameRate: (value: FrameRate) => void;
+	onClose: () => void;
+	onStart: () => void;
+};
+
 export type SourcePickerProps = {
 	sources: CaptureSource[];
 	selectedID: string;

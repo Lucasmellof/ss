@@ -1,6 +1,6 @@
 import { peerConfig, waitForICE, wsURL } from "./ice";
 import { clearViewerState, handleRemoteTrack, removeRemoteTracks } from "./remote-streams";
-import type { Member, PublisherSession, RoomStream, Signal, StreamOwner, ViewerSession } from "./types";
+import type { Member, PublishSlot, PublisherSession, RoomStream, Signal, StreamOwner, ViewerSession } from "./types";
 import { roomDebug, roomDebugError } from "./debug";
 
 type PendingPing = {
@@ -15,8 +15,8 @@ export class RoomClient {
 	private viewer?: ViewerSession;
 	private viewerID?: string;
 	private resumeToken?: string;
-	private publisher?: PublisherSession;
-	private publisherStop?: Promise<void>;
+	private publishers = new Map<PublishSlot, PublisherSession>();
+	private publisherStops = new Map<PublishSlot, Promise<void>>();
 	private publisherIDs = new Set<string>();
 	private pendingPing?: PendingPing;
 	private pingCounter = 0;
@@ -30,7 +30,7 @@ export class RoomClient {
 		private onStatus: (text: string) => void,
 		private onPeople: (count: number) => void = () => undefined,
 		private onMembers: (members: Member[]) => void = () => undefined,
-		private onPublishingChange: (publishing: boolean) => void = () => undefined,
+		private onPublishingChange: (publishing: boolean, slot: PublishSlot) => void = () => undefined,
 		private onRoomClosed: () => void = () => undefined,
 		private onStreamingMembers: (viewerIDs: string[]) => void = () => undefined,
 		private onStreamOwners: (owners: StreamOwner[]) => void = () => undefined,
@@ -146,8 +146,8 @@ export class RoomClient {
 		return promise;
 	}
 
-	async publish(server: string, room: string, stream: MediaStream, frameRate = 30, maxBitrate = 10_000_000) {
-		await this.stopPublish();
+	async publish(server: string, room: string, stream: MediaStream, frameRate = 30, maxBitrate = 10_000_000, slot: PublishSlot = "screen") {
+		await this.stopPublish(slot);
 		const pc = new RTCPeerConnection(peerConfig);
 		const ws = new WebSocket(wsURL(server));
 		let resolveReady!: () => void;
@@ -165,53 +165,53 @@ export class RoomClient {
 			resolveReady,
 			rejectReady,
 		};
-		this.publisher = session;
+		this.publishers.set(slot, session);
 		stream.getTracks().forEach((track) => {
 			roomDebug("publisher local track", { id: track.id, kind: track.kind, readyState: track.readyState, enabled: track.enabled });
 			const sender = pc.addTrack(track, stream);
 			void this.configureSender(sender, track, frameRate, maxBitrate);
 		});
 		pc.onconnectionstatechange = () => {
-			if (this.publisher !== session) return;
+			if (this.publishers.get(slot) !== session) return;
 			roomDebug("publisher peer state", { state: pc.connectionState, ice: pc.iceConnectionState, signaling: pc.signalingState });
 			if (["failed", "closed"].includes(pc.connectionState)) {
 				this.onStatus(`Conexão de transmissão: ${pc.connectionState}`);
 			}
 		};
 		ws.onopen = () => {
-			roomDebug("publisher websocket open", { room, viewerID: this.viewerID });
+			roomDebug("publisher websocket open", { room, slot, viewerID: this.viewerID });
 			ws.send(JSON.stringify({ type: "join", role: "publisher", room, viewerId: this.viewerID }));
 		};
 		ws.onmessage = (event) => {
-			void this.publisherSignal(session, JSON.parse(event.data) as Signal).catch((error: unknown) => {
-				if (this.publisher !== session) return;
+			void this.publisherSignal(session, slot, JSON.parse(event.data) as Signal).catch((error: unknown) => {
+				if (this.publishers.get(slot) !== session) return;
 				this.onStatus(error instanceof Error ? error.message : "Falha ao negociar transmissão");
 				session.rejectReady(error);
 				ws.close();
 			});
 		};
 		ws.onerror = () => {
-			if (this.publisher !== session) return;
+			if (this.publishers.get(slot) !== session) return;
 			const error = new Error("Erro no WebSocket de transmissão");
 			this.onStatus(error.message);
 			session.rejectReady(error);
 		};
 		ws.onclose = (event) => {
-			if (this.publisher !== session) return;
+			if (this.publishers.get(slot) !== session) return;
 			roomDebug("publisher websocket close", { code: event.code, reason: event.reason });
 			const intentional = session.intentional;
-			this.publisher = undefined;
+			this.publishers.delete(slot);
 			this.removePublisherID(session.publisherId);
 			pc.close();
 			session.rejectReady(new Error("A conexão de transmissão foi encerrada"));
-			if (!intentional) this.onPublishingChange(false);
+			if (!intentional) this.onPublishingChange(false, slot);
 			if (!intentional && event.code !== 1000) {
 				this.onStatus(`WebSocket de transmissão fechado (${event.code}${event.reason ? `: ${event.reason}` : ""})`);
 			}
 		};
 		this.onStatus("Preparando transmissão...");
 		const timeout = window.setTimeout(() => {
-			if (this.publisher !== session || session.joined) return;
+			if (this.publishers.get(slot) !== session || session.joined) return;
 			const error = new Error("Tempo esgotado ao iniciar a transmissão");
 			session.rejectReady(error);
 			ws.close();
@@ -228,8 +228,8 @@ export class RoomClient {
 	 * Returns false when there is no publisher or the new stream needs a sender that does not exist yet
 	 * (e.g. audio added to a video-only transmission); the caller should republish in that case.
 	 */
-	async replaceTracks(stream: MediaStream, frameRate = 30, maxBitrate = 10_000_000) {
-		const session = this.publisher;
+	async replaceTracks(stream: MediaStream, frameRate = 30, maxBitrate = 10_000_000, slot: PublishSlot = "screen") {
+		const session = this.publishers.get(slot);
 		if (!session) return false;
 		const transceivers = session.pc.getTransceivers();
 		const senderFor = (kind: string) => transceivers.find((item) => item.receiver.track.kind === kind)?.sender;
@@ -242,7 +242,7 @@ export class RoomClient {
 		roomDebug("publisher replace tracks", { videoTrackID: videoTrack.id, audioTrackID: audioTrack?.id, frameRate, maxBitrate });
 		await videoSender.replaceTrack(videoTrack);
 		if (audioSender) await audioSender.replaceTrack(audioTrack ?? null);
-		if (this.publisher !== session) return false;
+		if (this.publishers.get(slot) !== session) return false;
 		await this.configureSender(videoSender, videoTrack, frameRate, maxBitrate);
 		if (audioSender && audioTrack) await this.configureSender(audioSender, audioTrack, frameRate, maxBitrate);
 		return true;
@@ -261,9 +261,16 @@ export class RoomClient {
 		if (track.kind !== "video") return;
 		const parameters = sender.getParameters();
 		if (!parameters.encodings?.length) return;
+		// Camera tracks are tagged "motion": keep the frame rate (and therefore latency) steady and let the
+		// encoder drop resolution under congestion instead of queueing frames.
+		const motion = track.contentHint === "motion";
 		parameters.encodings[0].maxFramerate = frameRate;
 		parameters.encodings[0].maxBitrate = maxBitrate;
-		parameters.degradationPreference = "maintain-resolution";
+		if (motion) {
+			parameters.encodings[0].priority = "high";
+			parameters.encodings[0].networkPriority = "high";
+		}
+		parameters.degradationPreference = motion ? "maintain-framerate" : "maintain-resolution";
 		roomDebug("publisher sender parameters", {
 			trackID: track.id,
 			frameRate,
@@ -273,10 +280,10 @@ export class RoomClient {
 		await sender.setParameters(parameters).catch((error) => roomDebugError("publisher sender parameters failed", error));
 	}
 
-	stopPublish() {
-		const session = this.publisher;
-		if (!session) return this.publisherStop ?? Promise.resolve();
-		this.publisher = undefined;
+	stopPublish(slot: PublishSlot = "screen") {
+		const session = this.publishers.get(slot);
+		if (!session) return this.publisherStops.get(slot) ?? Promise.resolve();
+		this.publishers.delete(slot);
 		session.intentional = true;
 		this.removePublisherID(session.publisherId);
 
@@ -294,7 +301,7 @@ export class RoomClient {
 			resolveStopped = finish;
 		});
 		session.resolveStopped = resolveStopped;
-		this.publisherStop = stopped;
+		this.publisherStops.set(slot, stopped);
 
 		timeout = window.setTimeout(resolveStopped, 1_000);
 		session.ws.addEventListener("close", resolveStopped, { once: true });
@@ -310,7 +317,8 @@ export class RoomClient {
 
 	close() {
 		this.clearPendingPing();
-		this.stopPublish();
+		void this.stopPublish("screen");
+		void this.stopPublish("camera");
 		const session = this.viewer;
 		this.viewerID = undefined;
 		if (!session) return;
@@ -377,13 +385,13 @@ export class RoomClient {
 		this.onStatus("Ao vivo");
 	}
 
-	private async publisherSignal(session: PublisherSession, message: Signal) {
+	private async publisherSignal(session: PublisherSession, slot: PublishSlot, message: Signal) {
 		roomDebug("publisher signal", { type: message.type, sdpBytes: message.sdp?.length });
 		if (message.type === "stopped") {
 			session.resolveStopped();
 			return;
 		}
-		if (this.publisher !== session) return;
+		if (this.publishers.get(slot) !== session) return;
 		if (message.type === "error") {
 			const error = new Error(message.message ?? "Erro ao transmitir");
 			this.onStatus(error.message);
@@ -400,7 +408,7 @@ export class RoomClient {
 			}
 			await session.pc.setLocalDescription(await session.pc.createOffer());
 			await waitForICE(session.pc);
-			if (session.ws.readyState !== WebSocket.OPEN || this.publisher !== session) return;
+			if (session.ws.readyState !== WebSocket.OPEN || this.publishers.get(slot) !== session) return;
 			roomDebug("publisher offer sent", { sdpBytes: session.pc.localDescription?.sdp?.length ?? 0 });
 			session.ws.send(JSON.stringify({ type: "offer", sdp: session.pc.localDescription?.sdp }));
 			return;

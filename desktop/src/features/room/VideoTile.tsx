@@ -115,7 +115,12 @@ export function VideoTile({ tile, large, pinned, onPin, onHide }: VideoTileProps
 			onClick={() => onPin(tile.id)}
 		>
 			<video
-				className={cn("block size-full bg-[#17191c] object-contain", large ? "aspect-auto" : "aspect-video", !ready && "invisible")}
+				className={cn(
+					"block size-full bg-[#17191c] object-contain",
+					large ? "aspect-auto" : "aspect-video",
+					tile.mirrored && "-scale-x-100",
+					!ready && "invisible",
+				)}
 				ref={ref}
 				autoPlay
 				muted={tile.local || muted}

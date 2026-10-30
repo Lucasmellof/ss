@@ -6,6 +6,8 @@ export type Tile = {
 	name: string;
 	stream: MediaStream;
 	local?: boolean;
+	// Local camera previews are mirrored like a selfie; viewers receive the unmirrored image.
+	mirrored?: boolean;
 	ownerId?: string;
 };
 export type StageLayout = "grid" | "focus";
@@ -36,6 +38,8 @@ export type RoomViewProps = {
 	pinned?: string;
 	sharing: boolean;
 	startingShare: boolean;
+	cameraLive: boolean;
+	startingCamera: boolean;
 	soundsEnabled: boolean;
 	stageLayout: StageLayout;
 	layoutManual: boolean;
@@ -46,6 +50,8 @@ export type RoomViewProps = {
 	onShare: () => void;
 	onStopShare: () => void;
 	onEditShare: () => void;
+	onCamera: () => void;
+	onStopCamera: () => void;
 	onLeave: () => void;
 	onToggleSounds: () => void;
 	onStageLayout: (layout: StageLayout) => void;

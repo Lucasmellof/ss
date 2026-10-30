@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { RoomClient, type Member, type RoomStream, type StreamOwner } from "@/lib/room";
+import { RoomClient, type Member, type PublishSlot, type RoomStream, type StreamOwner } from "@/lib/room";
 import { SIGNALING_SERVER } from "@/lib/config";
 import { linkedRoom } from "@/lib/room-link";
 import { storedValue } from "@/lib/storage";
@@ -9,7 +9,8 @@ import { storedValue } from "@/lib/storage";
 const RECONNECT_ATTEMPTS = 5;
 const RECONNECT_STEP_MS = 3_000;
 
-type StopSharing = (message?: string) => void;
+// Without a slot every local transmission (screen and camera) is stopped.
+type StopSharing = (message?: string, slot?: PublishSlot) => void;
 
 export type RoomSessionOptions = {
 	onStopSharing?: StopSharing;
@@ -59,9 +60,9 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 			(nextMembers) => {
 				if (isCurrentSession()) setMembers(nextMembers);
 			},
-			(publishing) => {
+			(publishing, slot) => {
 				if (isCurrentSession() && !publishing) {
-					onStopSharingRef.current?.("A conexão de transmissão foi encerrada");
+					onStopSharingRef.current?.("A conexão de transmissão foi encerrada", slot);
 				}
 			},
 			() => {

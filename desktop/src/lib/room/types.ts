@@ -1,5 +1,6 @@
 export type RoomStream = { id: string; publisherId: string; stream: MediaStream };
 export type Member = { id: string; name: string };
+export type PublishSlot = "screen" | "camera";
 export type StreamOwner = { publisherId: string; viewerId: string; name: string };
 
 export type Signal = {
