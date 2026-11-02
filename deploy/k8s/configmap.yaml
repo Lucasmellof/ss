@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ss
+data:
+  MAX_VIEWERS: "20"
+  MAX_PUBLISHERS: "4"
+  WS_RATE_LIMIT: "30"
+  MAX_WS_PER_IP: "16"
+  TRUSTED_PROXIES: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10"
+  UDP_MIN: "40000"
+  UDP_MAX: "40100"

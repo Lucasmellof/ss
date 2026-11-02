@@ -8,6 +8,8 @@ services:
       MAX_WS_PER_IP: "${MAX_WS_PER_IP:-16}"
       UDP_MIN: "40000"
       UDP_MAX: "40100"
+      UDP_PORT: "${UDP_PORT:-}"
+      TRUSTED_PROXIES: "${TRUSTED_PROXIES:-}"
     ports:
       - "127.0.0.1:18080:8080/tcp"
       - "40000-40100:40000-40100/udp"

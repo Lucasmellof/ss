@@ -1,0 +1,89 @@
+image:
+  repository: ghcr.io/swlobr/ss
+  tag: ""
+  pullPolicy: Always
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+publicIP: ""
+
+media:
+  mode: hostNetwork
+  udpPort: 40000
+  udpMin: 40000
+  udpMax: 40100
+  loadBalancer:
+    annotations: {}
+    loadBalancerIP: ""
+    loadBalancerSourceRanges: []
+
+config:
+  maxViewers: 20
+  maxPublishers: 4
+  wsRateLimit: 30
+  maxWSPerIP: 16
+  trustedProxies: "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10"
+
+extraEnv: []
+
+service:
+  type: ClusterIP
+  port: 8080
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: nginx
+  host: ""
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  clusterIssuer: letsencrypt-prod
+  tls:
+    enabled: true
+    secretName: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    memory: 512Mi
+
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 20
+
+readinessProbe:
+  httpGet:
+    path: /healthz
+    port: http
+  periodSeconds: 10
+
+terminationGracePeriodSeconds: 15
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

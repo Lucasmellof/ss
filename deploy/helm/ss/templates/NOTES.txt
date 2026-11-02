@@ -1,0 +1,44 @@
+{{- $mode := include "ss.mediaMode" . -}}
+Screen Share relay deployed as {{ include "ss.fullname" . }} in namespace {{ .Release.Namespace }}.
+
+Replicas: 1 (strategy Recreate)
+  Rooms live in the memory of a single process, so the relay cannot be scaled
+  horizontally. Publishers and viewers of the same room must reach the same pod.
+  Upgrades restart the pod and drop active sessions; clients reconnect on their own.
+
+HTTP / WebSocket:
+{{- if .Values.ingress.enabled }}
+  {{ if .Values.ingress.tls.enabled }}https{{ else }}http{{ end }}://{{ .Values.ingress.host }}/
+{{- else }}
+  Ingress is disabled. To test locally:
+    kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "ss.fullname" . }} 8080:{{ .Values.service.port }}
+    open http://localhost:8080/
+  Browsers only allow screen capture over HTTPS (or localhost), so enable
+  ingress.enabled with TLS for real use.
+{{- end }}
+
+Media mode: {{ $mode }}
+{{- if eq $mode "hostNetwork" }}
+  The pod uses the node network and ICE listens on UDP {{ .Values.media.udpMin }}-{{ .Values.media.udpMax }}.
+  Open that UDP range in the node firewall / cloud security group.
+  The pod also binds TCP 8080 on the node; keep that port closed to the internet.
+{{- else if eq $mode "hostPort" }}
+  ICE listens on the single UDP port {{ .Values.media.udpPort }}, exposed as a hostPort on the node.
+  Open UDP {{ .Values.media.udpPort }} in the node firewall / cloud security group.
+{{- else }}
+  ICE listens on the single UDP port {{ .Values.media.udpPort }} behind the Service
+  {{ include "ss.fullname" . }}-media (type LoadBalancer, externalTrafficPolicy Local).
+{{- end }}
+{{- if .Values.publicIP }}
+  ICE advertises PUBLIC_IP={{ .Values.publicIP }}.
+{{- else if eq $mode "loadBalancer" }}
+
+  WARNING: publicIP is empty. Media will not flow until the relay advertises the
+  load balancer address. Find it with:
+    kubectl -n {{ .Release.Namespace }} get svc {{ include "ss.fullname" . }}-media
+  and then run:
+    helm upgrade {{ .Release.Name }} <chart> --reuse-values --set publicIP=<EXTERNAL-IP>
+{{- else }}
+  ICE advertises the node IP (status.hostIP). This only works when nodes have
+  public addresses; otherwise set publicIP to the address clients can reach.
+{{- end }}

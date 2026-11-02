@@ -9,5 +9,6 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /out/screen-share ./cmd
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates
 COPY --from=build /out/screen-share /screen-share
-EXPOSE 8080/tcp
+USER 65532:65532
+EXPOSE 8080/tcp 40000/udp
 ENTRYPOINT ["/screen-share"]

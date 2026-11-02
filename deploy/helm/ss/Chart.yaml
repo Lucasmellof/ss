@@ -1,0 +1,13 @@
+apiVersion: v2
+name: ss
+description: Self-hosted WebRTC screen sharing relay (SFU) for Kubernetes
+type: application
+version: 0.1.0
+appVersion: "latest"
+home: https://github.com/SwloBr/ss
+sources:
+  - https://github.com/SwloBr/ss
+keywords:
+  - webrtc
+  - screen-share
+  - sfu

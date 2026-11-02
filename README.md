@@ -48,12 +48,24 @@ Para produção, use uma faixa UDP fixa no firewall e um proxy TLS na frente. O 
 | `ADDR` | `-addr` | `:8080` | Endereço HTTP |
 | `PUBLIC_IP` | `-public-ip` | vazio | IP público anunciado pelo ICE |
 | `MAX_VIEWERS` | `-max-viewers` | `20` | Limite de espectadores por sala |
+| `MAX_PUBLISHERS` | `-max-publishers` | `4` | Maximum simultaneous streams per room |
 | `WS_RATE_LIMIT` | `-ws-rate-limit` | `30` | Novas conexões WebSocket por IP por minuto |
 | `MAX_WS_PER_IP` | `-max-ws-per-ip` | `16` | Conexões WebSocket simultâneas por IP |
 | `UDP_MIN` | `-udp-min` | `40000` | Primeiro porto da faixa ICE |
 | `UDP_MAX` | `-udp-max` | `40100` | Último porto da faixa ICE |
+| `UDP_PORT` | `-udp-port` | empty | Single UDP port for all ICE traffic; when set it replaces `UDP_MIN`/`UDP_MAX` (useful for Kubernetes `hostPort`/LoadBalancer and for Docker, where it must be inside the published range) |
+| `TRUSTED_PROXIES` | `-trusted-proxies` | empty | Comma-separated CIDRs or IPs of reverse proxies whose `X-Forwarded-For`/`X-Real-IP` headers are trusted, in addition to loopback (e.g. the ingress pod network) |
 
-O código de sala precisa ter entre 8 e 64 caracteres, usando letras, números, hífen ou sublinhado. O relay limita novas conexões WebSocket e conexões simultâneas por IP; atrás de um proxy local, ele usa o primeiro endereço válido de `X-Forwarded-For` ou `X-Real-IP`. O servidor mantém somente os pacotes em trânsito na memória; não há gravação. O código não é autenticação: qualquer pessoa que descubra um código ainda pode entrar. Para privacidade forte, o próximo passo é implementar autenticação ou convites assinados.
+O código de sala precisa ter entre 8 e 64 caracteres, usando letras, números, hífen ou sublinhado. O relay limita novas conexões WebSocket e conexões simultâneas por IP. Behind a loopback proxy or a proxy listed in `TRUSTED_PROXIES`, the client IP is the right-most `X-Forwarded-For` address that is not a trusted proxy, falling back to `X-Real-IP`. O servidor mantém somente os pacotes em trânsito na memória; não há gravação. O código não é autenticação: qualquer pessoa que descubra um código ainda pode entrar. Para privacidade forte, o próximo passo é implementar autenticação ou convites assinados.
+
+## Kubernetes
+
+A Helm chart lives in [deploy/helm/ss](deploy/helm/ss) and a plain kustomize base in [deploy/k8s](deploy/k8s). The image is published to `ghcr.io/swlobr/ss` for `linux/amd64` and `linux/arm64`. See [deploy/k8s/README.md](deploy/k8s/README.md) for the quick start, how to choose a media mode, firewall notes and TLS.
+
+```bash
+helm install ss ./deploy/helm/ss --namespace ss --create-namespace \
+  --set ingress.enabled=true --set ingress.host=share.example.com
+```
 
 ## Cliente desktop para amigos
 

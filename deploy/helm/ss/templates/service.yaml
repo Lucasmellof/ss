@@ -1,0 +1,49 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ss.fullname" . }}
+  labels:
+    {{- include "ss.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "ss.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- if eq (include "ss.mediaMode" .) "loadBalancer" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "ss.fullname" . }}-media
+  labels:
+    {{- include "ss.labels" . | nindent 4 }}
+  {{- with .Values.media.loadBalancer.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: LoadBalancer
+  externalTrafficPolicy: Local
+  {{- with .Values.media.loadBalancer.loadBalancerIP }}
+  loadBalancerIP: {{ . | quote }}
+  {{- end }}
+  {{- with .Values.media.loadBalancer.loadBalancerSourceRanges }}
+  loadBalancerSourceRanges:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  selector:
+    {{- include "ss.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: media
+      port: {{ .Values.media.udpPort }}
+      targetPort: media
+      protocol: UDP
+{{- end }}
