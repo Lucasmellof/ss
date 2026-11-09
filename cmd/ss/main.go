@@ -43,7 +43,16 @@ func main() {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/ws", s.handleWebSocket)
 	mux.HandleFunc("/healthz", healthHandler)
-	mux.Handle("/", securityHeaders(http.FileServer(http.FS(web.FS))))
+	mux.HandleFunc("/favicon.ico", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, web.Icons, "favicon.ico") })
+	mux.HandleFunc("/icon.png", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, web.Icons, "icon.png") })
+	files := http.FileServer(http.FS(web.FS))
+	mux.Handle("/", securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/room" {
+			http.ServeFileFS(w, r, web.FS, "index.html")
+			return
+		}
+		files.ServeHTTP(w, r)
+	})))
 
 	httpServer := &http.Server{
 		Addr:              cfg.addr,

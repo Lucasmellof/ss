@@ -16,6 +16,7 @@ export function SourcePicker({
 	audioMode,
 	includeDiscordAudio,
 	nativePicker,
+	browserPicker,
 	live,
 	loading,
 	starting,
@@ -65,7 +66,7 @@ export function SourcePicker({
 					</button>
 				</div>
 
-				<div className="mb-2.5 flex items-center justify-between gap-[15px] text-[11px] text-app-muted">
+				{!browserPicker && <><div className="mb-2.5 flex items-center justify-between gap-[15px] text-[11px] text-app-muted">
 					<span>{loading ? "Buscando telas e janelas..." : `${sources.length} fonte(s) disponível(is)`}</span>
 					<button
 						className="inline-flex items-center gap-1.5 border-0 bg-transparent text-[11px] font-extrabold text-app-accent hover:text-[#b0efd5] disabled:cursor-not-allowed disabled:opacity-50"
@@ -154,6 +155,8 @@ export function SourcePicker({
 					)}
 				</div>
 
+				</>}
+				{browserPicker && <p className="text-xs text-app-muted">O navegador abrirá o seletor de tela, janela ou aba ao iniciar. Para compartilhar áudio, habilite-o no seletor.</p>}
 				<div className="mt-5 border-t border-app-line-soft pt-[17px]">
 					<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
 						<label className="grid min-w-0 gap-2 text-xs font-bold text-app-muted">
@@ -193,7 +196,7 @@ export function SourcePicker({
 							</select>
 						</label>
 					</div>
-					{audioMode === "system" && sourceType === "screen" && (
+					{!browserPicker && audioMode === "system" && sourceType === "screen" && (
 						<label className="mt-3 flex cursor-pointer items-center gap-2 text-xs font-bold text-app-muted">
 							<input
 								className="size-4 accent-app-accent"

@@ -77,7 +77,8 @@ export function RoomPage() {
 					resolution={capture.resolution}
 					audioMode={capture.audioMode}
 					includeDiscordAudio={capture.includeDiscordAudio}
-					nativePicker={window.screenShare.platform === "linux"}
+					nativePicker={!window.screenShare || window.screenShare.platform === "linux"}
+					browserPicker={!window.screenShare}
 					live={capture.sharing}
 					loading={capture.loadingSources}
 					starting={capture.startingShare}

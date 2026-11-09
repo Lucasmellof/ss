@@ -22,7 +22,8 @@
 		"dist:win": "bun run build:audio:win && bun run build && electron-builder --win portable nsis --publish never",
 		"dist:linux": "bun run build && electron-builder --linux AppImage deb --publish never",
 		"sign": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/sign-windows.ps1",
-		"dist:signed": "bun run dist:win && bun run sign"
+		"dist:signed": "bun run dist:win && bun run sign",
+		"build:web": "vite build --config vite.browser.config.ts"
 	},
 	"dependencies": {
 		"@radix-ui/react-dialog": "latest",

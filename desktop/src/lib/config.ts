@@ -1,1 +1,1 @@
-export const SIGNALING_SERVER = "https://ss.carmellium.com";
+export const SIGNALING_SERVER = typeof window !== "undefined" && !window.screenShare ? window.location.origin : "https://ss.carmellium.com";

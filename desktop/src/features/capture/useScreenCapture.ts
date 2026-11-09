@@ -135,6 +135,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 
 	const loadSources = async () => {
 		setPickerOpen(true);
+		if (!window.screenShare) return;
 		setLoadingSources(true);
 		const requestID = ++sourceRequest.current;
 		try {
@@ -204,7 +205,11 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		audioMode: audioModeValue,
 		includeDiscordAudio: includeDiscordAudioValue,
 	}: CaptureSettings) => {
-		const isLinux = window.screenShare.platform === "linux";
+		if (!window.screenShare) {
+            const selectedResolution = resolutions[resolutionValue];
+            return navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: frameRateValue }, ...(selectedResolution.width ? { width: { ideal: selectedResolution.width }, height: { ideal: selectedResolution.height } } : {}) }, audio: audioModeValue === "system" });
+        }
+        const isLinux = window.screenShare.platform === "linux";
 		let stream: MediaStream | undefined;
 		try {
 			if (source) await window.screenShare.setCaptureSource(source.id);
@@ -336,14 +341,15 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 						const leftChannel = audioBuffer.getChannelData(0);
 						const rightChannel = audioBuffer.getChannelData(1);
 
+						const format = audioFormat;
 						const readSample = (frame: number, channel: number) => {
-							const sourceChannel = Math.min(channel, audioFormat.channels - 1);
+							const sourceChannel = Math.min(channel, format.channels - 1);
 							const offset = frame * frameBytes + sourceChannel * sampleBytes;
-							if (audioFormat.kind === "float32") {
+							if (format.kind === "float32") {
 								return offset + 4 <= view.byteLength ? clampSample(view.getFloat32(offset, true)) : 0;
 							}
 							return offset + sampleBytes <= view.byteLength
-								? clampSample(decodePcmSample(view, offset, audioFormat.bitsPerSample))
+								? clampSample(decodePcmSample(view, offset, format.bitsPerSample))
 								: 0;
 						};
 
@@ -436,7 +442,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	const startSharing = async () => {
 		const settings = readSettings();
 		const roomClient = client.current;
-		if ((!settings.source && window.screenShare.platform !== "linux") || !roomClient) {
+		if ((!settings.source && window.screenShare && window.screenShare.platform !== "linux") || !roomClient) {
 			onStatusRef.current("Selecione uma tela ou janela para compartilhar");
 			return;
 		}
@@ -510,7 +516,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 		const roomClient = client.current;
 		if (!previous || !roomClient) return startSharing();
 		const settings = readSettings();
-		if (!settings.source && window.screenShare.platform !== "linux") {
+		if (!settings.source && window.screenShare && window.screenShare.platform !== "linux") {
 			onStatusRef.current("Selecione uma tela ou janela para compartilhar");
 			return;
 		}
