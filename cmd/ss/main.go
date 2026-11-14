@@ -47,6 +47,9 @@ func main() {
 	mux.HandleFunc("/icon.png", func(w http.ResponseWriter, r *http.Request) { http.ServeFileFS(w, r, web.Icons, "icon.png") })
 	files := http.FileServer(http.FS(web.FS))
 	mux.Handle("/", securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/" || r.URL.Path == "/room" {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		if r.URL.Path == "/room" {
 			http.ServeFileFS(w, r, web.FS, "index.html")
 			return

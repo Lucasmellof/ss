@@ -1,12 +1,25 @@
 import { useEffect, useRef, useState } from "react";
-import { EyeOff, Pin,Volume1, Volume2, VolumeX } from "lucide-react";
+import { Expand, EyeOff, Pin, Volume1, Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { roomDebug, roomDebugError } from "@/lib/room/debug";
 import { StreamLoading } from "./StreamLoading";
 import type { VideoTileProps } from "./types";
 
+type WebkitFullscreenVideo = HTMLVideoElement & {
+	webkitDisplayingFullscreen?: boolean;
+	webkitEnterFullscreen?: () => void;
+};
+
+const canUseIOSFullscreen =
+	typeof navigator !== "undefined" &&
+	typeof HTMLVideoElement !== "undefined" &&
+	"webkitEnterFullscreen" in HTMLVideoElement.prototype &&
+	(/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+		((navigator.platform === "MacIntel" || /Macintosh/.test(navigator.userAgent)) && navigator.maxTouchPoints > 1));
+
 export function VideoTile({ tile, large, pinned, onPin, onHide }: VideoTileProps) {
 	const ref = useRef<HTMLVideoElement>(null);
+	const volumeRef = useRef(1);
 	const [audioBlocked, setAudioBlocked] = useState(false);
 	const [muted, setMuted] = useState(true);
 	const [volume, setVolume] = useState(1);
@@ -53,6 +66,46 @@ export function VideoTile({ tile, large, pinned, onPin, onHide }: VideoTileProps
 			trackReadyState: videoTrack?.readyState,
 			trackMuted: videoTrack?.muted,
 		});
+		const webkitVideo = video as WebkitFullscreenVideo;
+		let resumeTimer: number | undefined;
+		const handleBeginFullscreen = () => {
+			if (!tile.local && video.volume === 0) {
+				video.volume = volumeRef.current > 0 ? volumeRef.current : 1;
+			}
+		};
+		const handleNativeVolumeChange = () => {
+			if (!webkitVideo.webkitDisplayingFullscreen || tile.local) return;
+			setMuted(video.muted);
+			if (!video.muted) {
+				setAudioBlocked(false);
+				setVolume((current) => (current === 0 ? 1 : current));
+			}
+		};
+		const handleEndFullscreen = () => {
+			if (!tile.local) {
+				setMuted(video.muted);
+				if (video.muted) video.volume = 0;
+			}
+			// iOS WebKit pauses <video> after closing native fullscreen, freezing live WebRTC playback.
+			const resumePlayback = () => {
+				if (video.srcObject === tile.stream && video.paused) {
+					void video.play().catch(() => {
+						if (!tile.local) {
+							video.muted = true;
+							setMuted(true);
+							setAudioBlocked(true);
+							void video.play().catch(() => undefined);
+						}
+					});
+				}
+			};
+			resumePlayback();
+			window.clearTimeout(resumeTimer);
+			resumeTimer = window.setTimeout(resumePlayback, 100);
+		};
+		video.addEventListener("webkitbeginfullscreen", handleBeginFullscreen);
+		video.addEventListener("webkitendfullscreen", handleEndFullscreen);
+		video.addEventListener("volumechange", handleNativeVolumeChange);
 		video.pause();
 		video.srcObject = null;
 		video.srcObject = tile.stream;
@@ -73,15 +126,44 @@ export function VideoTile({ tile, large, pinned, onPin, onHide }: VideoTileProps
 			videoTrack?.removeEventListener("mute", logTrackEvent);
 			videoTrack?.removeEventListener("unmute", logTrackEvent);
 			videoTrack?.removeEventListener("ended", logTrackEvent);
+			video.removeEventListener("webkitbeginfullscreen", handleBeginFullscreen);
+			video.removeEventListener("webkitendfullscreen", handleEndFullscreen);
+			video.removeEventListener("volumechange", handleNativeVolumeChange);
+			window.clearTimeout(resumeTimer);
 			roomDebug("video srcObject detach", { tileID: tile.id, streamID: tile.stream.id });
 			if (video.srcObject === tile.stream) video.srcObject = null;
 		};
 	}, [tile.id, tile.stream, tile.local]);
 
 	useEffect(() => {
-		const video = ref.current;
-		if (video) video.volume = muted ? 0 : volume;
-	}, [muted, volume]);
+		volumeRef.current = volume;
+		const video = ref.current as WebkitFullscreenVideo | null;
+		if (!video) return;
+		if (video.webkitDisplayingFullscreen && !tile.local) {
+			video.volume = volume > 0 ? volume : 1;
+			return;
+		}
+		video.volume = muted ? 0 : volume;
+	}, [muted, volume, tile.local]);
+
+	const enterIOSFullscreen = () => {
+		const video = ref.current as WebkitFullscreenVideo | null;
+		if (!video?.webkitEnterFullscreen) return;
+		if (!video.paused && video.readyState >= 1) {
+			try {
+				video.webkitEnterFullscreen();
+				return;
+			} catch (error) {
+				roomDebugError("video ios fullscreen failed", { tileID: tile.id, error: String(error) });
+			}
+		}
+		void video
+			.play()
+			.then(() => video.webkitEnterFullscreen?.())
+			.catch((error) => {
+				roomDebugError("video ios fullscreen play failed", { tileID: tile.id, error: String(error) });
+			});
+	};
 
 	const toggleMute = () => {
 		if (tile.local) return;
@@ -135,6 +217,22 @@ export function VideoTile({ tile, large, pinned, onPin, onHide }: VideoTileProps
 					</div>
 					<StreamLoading name={tile.name} />
 				</>
+			)}
+			{canUseIOSFullscreen && (
+				<button
+					className="absolute top-2.5 right-2.5 z-[5] inline-flex h-[30px] items-center gap-1.5 rounded-lg border border-white/15 bg-black/65 px-2.5 text-[10px] font-extrabold text-[#dbe2e7] hover:border-app-accent/40 hover:bg-app-accent/12 hover:text-app-accent disabled:cursor-not-allowed disabled:opacity-45"
+					type="button"
+					disabled={!ready && !audioBlocked}
+					onPointerDown={(event) => event.stopPropagation()}
+					onClick={(event) => {
+						event.stopPropagation();
+						enterIOSFullscreen();
+					}}
+					title={`Tela cheia no iOS (${tile.name})`}
+					aria-label={`Abrir ${tile.name} em tela cheia no iOS`}
+				>
+					<Expand className="size-3.5" /> Tela cheia
+				</button>
 			)}
 			<div className="absolute inset-x-0 bottom-0 z-[5] flex items-center justify-between gap-2 bg-gradient-to-t from-black/80 via-black/30 to-transparent px-3 pb-2.5 pt-7 text-[11px] font-bold text-white">
 				<span>{tile.name}</span>
