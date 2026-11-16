@@ -156,7 +156,7 @@ export function SourcePicker({
 				</div>
 
 				</>}
-				{browserPicker && <p className="text-xs text-app-muted">O navegador abrirá o seletor de tela, janela ou aba ao iniciar. Para compartilhar áudio, habilite-o no seletor.</p>}
+				{browserPicker && <p className="rounded-lg border border-app-accent/20 bg-app-accent/8 px-3 py-2 text-[11px] leading-5 text-app-muted">O navegador abrirá o seletor de tela, janela ou aba ao iniciar. Para compartilhar áudio, habilite-o no seletor.</p>}
 				<div className="mt-5 border-t border-app-line-soft pt-[17px]">
 					<div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
 						<label className="grid min-w-0 gap-2 text-xs font-bold text-app-muted">

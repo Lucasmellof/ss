@@ -36,9 +36,10 @@ export function JoinPanel({ room, name, joining, status, onRoomChange, onNameCha
 							className={fieldClass}
 							value={name}
 							onChange={(event) => onNameChange(event.target.value)}
-							placeholder="Participante"
+							placeholder="Digite seu nome"
 							maxLength={32}
 							autoComplete="nickname"
+							required
 						/>
 					</label>
 				</div>

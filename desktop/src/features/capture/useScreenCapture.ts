@@ -207,7 +207,7 @@ export function useScreenCapture({ client, server, room, onStatus }: ScreenCaptu
 	}: CaptureSettings) => {
 		if (!window.screenShare) {
             const selectedResolution = resolutions[resolutionValue];
-            return navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: frameRateValue }, ...(selectedResolution.width ? { width: { ideal: selectedResolution.width }, height: { ideal: selectedResolution.height } } : {}) }, audio: audioModeValue === "system" });
+            return navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: frameRateValue, max: frameRateValue }, ...(selectedResolution.width && selectedResolution.height ? { width: { ideal: selectedResolution.width, max: selectedResolution.width }, height: { ideal: selectedResolution.height, max: selectedResolution.height } } : {}) }, audio: audioModeValue === "system" });
         }
         const isLinux = window.screenShare.platform === "linux";
 		let stream: MediaStream | undefined;

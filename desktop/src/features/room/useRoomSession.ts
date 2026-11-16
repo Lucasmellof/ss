@@ -128,11 +128,17 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 
 	const join = async (event?: FormEvent) => {
 		event?.preventDefault();
-		await enterRoom(room.trim(), name.trim() || "Participante");
+		await enterRoom(room.trim(), name.trim());
 	};
 
 	const enterRoom = async (nextRoom: string, displayName: string) => {
 		if (joiningRef.current) return;
+
+		const trimmedName = displayName.trim();
+		if (!trimmedName) {
+			setStatus("Digite seu nome para entrar na sala");
+			return;
+		}
 
 		if (!/^[a-zA-Z0-9_-]{8,64}$/.test(nextRoom)) {
 			setStatus("A sala deve ter de 8 a 64 caracteres: letras, números, hífen ou sublinhado");
@@ -147,7 +153,7 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 		setStreamingMembers([]);
 		setStreamOwners([]);
 
-		const nextClient = createClient(token, nextRoom, displayName);
+		const nextClient = createClient(token, nextRoom, trimmedName);
 		client.current = nextClient;
 
 		const attempt = ++joinAttempt.current;
@@ -155,11 +161,12 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 		setJoining(true);
 		setStatus("Entrando na sala...");
 		try {
-			await nextClient.join(SIGNALING_SERVER, nextRoom, displayName);
+			await nextClient.join(SIGNALING_SERVER, nextRoom, trimmedName);
 			if (sessionToken.current !== token || client.current !== nextClient) return;
 			localStorage.setItem("screen-share.room", nextRoom);
-			localStorage.setItem("screen-share.name", displayName);
+			localStorage.setItem("screen-share.name", trimmedName);
 			setRoom(nextRoom);
+			setName(trimmedName);
 			wasJoined.current = true;
 			setJoined(true);
 		} catch (error) {
@@ -196,7 +203,7 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 		openLinkedRoomRef.current = (linkedRoom) => {
 			if (wasJoined.current && room === linkedRoom) return;
 			setRoom(linkedRoom);
-			const displayName = name.trim() || storedValue("screen-share.name");
+			const displayName = (name.trim() || storedValue("screen-share.name")).trim();
 			if (!displayName) {
 				setStatus("Digite seu nome para entrar na sala do link");
 				return;
@@ -208,7 +215,12 @@ export function useRoomSession({ onStopSharing }: RoomSessionOptions = {}) {
 
 	useEffect(() => {
 		const desktop = window.screenShare;
-		if (!desktop) return undefined;
+		if (!desktop) {
+			void Promise.resolve(linkedRoom()).then((room) => {
+				if (room) openLinkedRoomRef.current(room);
+			});
+			return undefined;
+		}
 		void desktop.takePendingRoom().then((linkedRoom) => {
 			if (linkedRoom) openLinkedRoomRef.current(linkedRoom);
 		});
