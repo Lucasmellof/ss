@@ -21,8 +21,8 @@ export const waitForICE = async (pc: RTCPeerConnection) => {
 
 export const wsURL = (server: string) => {
 	const url = new URL("/ws", server);
-	url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-	return url;
+	const protocol = url.protocol === "https:" ? "wss:" : "ws:";
+	return `${protocol}//${url.host}${url.pathname}${url.search}`;
 };
 
 export const peerConfig: RTCConfiguration = {
