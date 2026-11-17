@@ -5,6 +5,8 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"net/http/pprof"
+	"os"
 	"time"
 
 	"screen-share/web"
@@ -21,6 +23,19 @@ func main() {
 	flag.UintVar(&cfg.udpMin, "udp-min", envUintOr("UDP_MIN", defaultUDPMin), "menor porta UDP usada pelo ICE")
 	flag.UintVar(&cfg.udpMax, "udp-max", envUintOr("UDP_MAX", defaultUDPMax), "maior porta UDP usada pelo ICE")
 	flag.Parse()
+	if os.Getenv("PPROF") == "1" {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/debug/pprof/", pprof.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+		go func() {
+			if err := http.ListenAndServe("127.0.0.1:6060", mux); err != nil {
+				log.Printf("pprof: %v", err)
+			}
+		}()
+	}
 
 	if cfg.maxViewers < 1 || cfg.maxPublishers < 1 || cfg.wsRateLimit < 1 || cfg.maxWSPerIP < 1 {
 		log.Fatal("max-viewers, max-publishers, ws-rate-limit e max-ws-per-ip precisam ser maiores que zero")
