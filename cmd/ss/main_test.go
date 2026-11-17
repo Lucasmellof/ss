@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -156,15 +157,123 @@ func TestPeerIPTrustsForwardedHeadersOnlyBehindLoopback(t *testing.T) {
 	proxied := httptest.NewRequest(http.MethodGet, "http://localhost:8080/ws", nil)
 	proxied.RemoteAddr = "127.0.0.1:1234"
 	proxied.Header.Set("X-Forwarded-For", "203.0.113.10, 127.0.0.1")
-	if got := peerIP(proxied); got != "203.0.113.10" {
+	if got := peerIP(proxied, nil); got != "203.0.113.10" {
 		t.Fatalf("unexpected proxied IP: %q", got)
 	}
 
 	direct := httptest.NewRequest(http.MethodGet, "http://localhost:8080/ws", nil)
 	direct.RemoteAddr = "203.0.113.20:1234"
 	direct.Header.Set("X-Forwarded-For", "203.0.113.10")
-	if got := peerIP(direct); got != "203.0.113.20" {
+	if got := peerIP(direct, nil); got != "203.0.113.20" {
 		t.Fatalf("unexpected direct IP: %q", got)
+	}
+}
+
+func TestParseTrustedProxies(t *testing.T) {
+	networks, err := parseTrustedProxies(" 10.0.0.0/8, 192.168.1.5 fd00::/8\t2001:db8::1 ")
+	if err != nil {
+		t.Fatalf("parseTrustedProxies: %v", err)
+	}
+	want := []string{"10.0.0.0/8", "192.168.1.5/32", "fd00::/8", "2001:db8::1/128"}
+	if len(networks) != len(want) {
+		t.Fatalf("got %d networks, want %d", len(networks), len(want))
+	}
+	for i, network := range networks {
+		if network.String() != want[i] {
+			t.Fatalf("network %d = %s, want %s", i, network, want[i])
+		}
+	}
+
+	empty, err := parseTrustedProxies("")
+	if err != nil || len(empty) != 0 {
+		t.Fatalf("empty value: networks=%v err=%v", empty, err)
+	}
+
+	for _, invalid := range []string{"not-an-ip", "10.0.0.0/33", "10.0.0.0/8,bogus"} {
+		if _, err := parseTrustedProxies(invalid); err == nil {
+			t.Fatalf("expected error for %q", invalid)
+		}
+	}
+}
+
+func TestPeerIPTrustsForwardedHeadersFromTrustedCIDR(t *testing.T) {
+	trusted, err := parseTrustedProxies("10.42.0.0/16")
+	if err != nil {
+		t.Fatalf("parseTrustedProxies: %v", err)
+	}
+
+	ingress := httptest.NewRequest(http.MethodGet, "http://share.example.com/ws", nil)
+	ingress.RemoteAddr = "10.42.3.7:5555"
+	ingress.Header.Set("X-Forwarded-For", "198.51.100.1, 203.0.113.10, 10.42.0.9")
+	if got := peerIP(ingress, trusted); got != "203.0.113.10" {
+		t.Fatalf("unexpected client IP behind trusted proxy: %q", got)
+	}
+
+	realIP := httptest.NewRequest(http.MethodGet, "http://share.example.com/ws", nil)
+	realIP.RemoteAddr = "10.42.3.7:5555"
+	realIP.Header.Set("X-Real-IP", "203.0.113.11")
+	if got := peerIP(realIP, trusted); got != "203.0.113.11" {
+		t.Fatalf("unexpected X-Real-IP result: %q", got)
+	}
+
+	onlyProxies := httptest.NewRequest(http.MethodGet, "http://share.example.com/ws", nil)
+	onlyProxies.RemoteAddr = "10.42.3.7:5555"
+	onlyProxies.Header.Set("X-Forwarded-For", "10.42.0.8, 10.42.0.9")
+	if got := peerIP(onlyProxies, trusted); got != "10.42.0.8" {
+		t.Fatalf("unexpected result for proxy-only chain: %q", got)
+	}
+
+	untrusted := httptest.NewRequest(http.MethodGet, "http://share.example.com/ws", nil)
+	untrusted.RemoteAddr = "10.43.0.1:5555"
+	untrusted.Header.Set("X-Forwarded-For", "203.0.113.10")
+	if got := peerIP(untrusted, trusted); got != "10.43.0.1" {
+		t.Fatalf("untrusted peer should not be able to set forwarded headers: %q", got)
+	}
+
+	ipv6 := httptest.NewRequest(http.MethodGet, "http://share.example.com/ws", nil)
+	ipv6.RemoteAddr = "[fd00::1]:5555"
+	ipv6.Header.Set("X-Forwarded-For", "203.0.113.12")
+	v6trusted := []*net.IPNet{{IP: net.ParseIP("fd00::"), Mask: net.CIDRMask(8, 128)}}
+	if got := peerIP(ipv6, v6trusted); got != "203.0.113.12" {
+		t.Fatalf("unexpected IPv6 proxy result: %q", got)
+	}
+}
+
+func TestValidateUDPPort(t *testing.T) {
+	for _, port := range []uint{0, 1, 40000, 65535} {
+		if err := validateUDPPort(port); err != nil {
+			t.Fatalf("port %d should be valid: %v", port, err)
+		}
+	}
+	if err := validateUDPPort(65536); err == nil {
+		t.Fatal("port 65536 should be rejected")
+	}
+	if _, _, err := newMuxedWebRTCAPI("", 0); err == nil {
+		t.Fatal("single-port mode should reject port 0")
+	}
+}
+
+func TestMuxedWebRTCAPI(t *testing.T) {
+	probe, err := net.ListenUDP("udp", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatalf("pick free UDP port: %v", err)
+	}
+	port := uint(probe.LocalAddr().(*net.UDPAddr).Port)
+	_ = probe.Close()
+
+	api, closer, err := newMuxedWebRTCAPI("203.0.113.10", port)
+	if err != nil {
+		t.Fatalf("newMuxedWebRTCAPI: %v", err)
+	}
+	defer closer.Close()
+	pc, err := api.NewPeerConnection(webrtc.Configuration{})
+	if err != nil {
+		t.Fatalf("NewPeerConnection: %v", err)
+	}
+	_ = pc.Close()
+
+	if _, _, err := newMuxedWebRTCAPI("", port); err == nil {
+		t.Fatal("binding the same UDP port twice should fail")
 	}
 }
 
